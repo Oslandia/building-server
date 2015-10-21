@@ -25,43 +25,137 @@ def toglTF(rows,origin = [0,0,0]):
 					triangles.append(poly[0])
 		nodes.append(triangles)
 	moveOrigin(nodes, origin);
-	ptsIdx = indexation(nodes);
+	data = ([], [], [], [])
+	for i in range(0,len(nodes)):
+		ptsIdx = indexation(nodes[i]);
+		packedVertices = ''.join(ptsIdx[0])
+		data[0].append(packedVertices)
+		data[1].append(struct.pack('H'*len(ptsIdx[1]), *ptsIdx[1]))
+		data[2].append(len(ptsIdx[0]))
+		data[3].append(len(ptsIdx[1]))
+	outputJSON(data)
+	outputBin(data)
+
 	#print nodes
 
-def outputBin(index, vertices):
+def outputBin(data):
+	binary = ''.join(data[1])
+	binary = binary + ''.join(data[0])
+	return binary
 
-def outputJSON(nodes):
-	baseJSON = """\
-{
+def outputJSON(data):
+	# Buffer
+	nodeNb = len(data[0])
+	sizeIdx = []
+	sizeVce = []
+	for i in range(0, nodeNb):
+		sizeVce.append(len(data[0][i]))
+		sizeIdx.append(len(data[1][i]))
+
+
+	buffers = """\
+"objects": {{
+	"byteLength": {0},
+	"type": "arraybuffer",
+	"uri": 
+}}""".format("k")#sum(sizeVce) + sum(sizeIdx))
+
+	# Buffer view
+	bufferViews = """\
+"BV_indices": {{
+	"buffer": "objects",
+	"byteLength": {0},
+	"byteOffset": 0,
+	"target": 34963
+}},
+"BV_vertices": {{
+	"buffer": "objects",
+	"byteLength": {1},
+	"byteOffset": {0},
+	"target": 34962
+}}""".format(sum(sizeIdx), sum(sizeVce))
+
+	# Accessor
+	accessors = ""
+	for i in range(0, nodeNb):
+		accessors = accessors + """\
+"AI_{0}": {{
+	"bufferView": "BV_indices",
+    "byteOffset": {1},
+    "byteStride": 4,
+    "componentType": 5123,
+    "count": {3},
+    "type": "SCALAR"
+}},
+"AV_{0}": {{
+	"bufferView": "BV_vertices",
+    "byteOffset": {2},
+    "byteStride": 12,
+    "componentType": 5126,
+    "count": {4},
+    "type": "VEC3"
+}},""".format(i, 0 if i == 0 else sizeIdx[i-1], 0 if i == 0 else sizeVce[i-1], data[3][i], data[2][i])
+
+	# Mesh
+	meshes = ""
+	for i in range(0, nodeNb):
+		meshes = meshes + """\
+"M{0}": {{
+	"attributes": {{
+		"POSITION": "AV{0}"
+	}}
+	"indices": "AI{0}"
+	"material": "defaultMaterial"
+	"mode": 4
+}},""".format(i)
+
+	# Nodes
+	nodes = ""
+	for i in range(0, nodeNb):
+		nodes = nodes + """\
+"N{0}": {{
+	"meshes": [
+		"M{0}"
+	]
+}},""".format(i)
+	sceneNodes = ""
+	for i in range(0, nodeNb):
+		sceneNodes = sceneNodes + "N{0},".format(i)
+
+	# Final glTF
+	JSON = """\
+{{
 	"scene": "defaultScene",
-	"scenes": {
-		"defaultScene": {
+	"scenes": {{
+		"defaultScene": {{
 			"nodes": [
 				{0}
 			]
-		}
-	},
-	"nodes": {
+		}}
+	}},
+	"nodes": {{
 		{1}
-	},
-	"mesh": {
+	}},
+	"mesh": {{
 		{2}
-	},
-	"accessors": {
+	}},
+	"accessors": {{
 		{3}
-	},
-	"bufferViews": {
+	}},
+	"bufferViews": {{
 		{4}
-	},
-	"buffers": {
+	}},
+	"buffers": {{
 		{5}
-	},
-	"materials": {
-		"default": {
+	}},
+	"materials": {{
+		"defaultMaterial": {{
 			"name": "None"
-		}
-	}
-}"""
+		}}
+	}}
+}}""".format(sceneNodes, nodes, meshes, accessors, bufferViews, buffers)
+
+	return JSON
 
 def moveOrigin(nodes, delta):
 	"""
@@ -74,7 +168,7 @@ def moveOrigin(nodes, delta):
 				t[i] = struct.pack('fff', t[i][0] - delta[0], t[i][1] - delta[1], t[i][2] - delta[2])
 
 
-def indexation(nodes):
+def indexation(triangles):
 	"""
 	Creates an index for points
 	Replaces points in triangles by their index
@@ -83,17 +177,16 @@ def indexation(nodes):
 	indices = [];
 	maxIdx = 0;
 
-	for n in nodes:
-		for t in n:
-			for pt in t:
-				if pt in index:
-					indices.append(index[pt]);
-				else:
-					index[pt] = maxIdx;
-					indices.append(maxIdx);
-					maxIdx+=1;
+	for t in triangles:
+		for pt in t:
+			if pt in index:
+				indices.append(index[pt]);
+			else:
+				index[pt] = maxIdx;
+				indices.append(maxIdx);
+				maxIdx+=1;
 
-	return (index.values(), indices)
+	return (index.keys(), indices)
 
 
 def triangulate(polygon):
@@ -170,7 +263,7 @@ def parse(wkb):
 			polygon.append(line);
 		multiPolygon.append(polygon);
 	#print multiPolygon;
-	print len(multiPolygon);
+	#print len(multiPolygon);
 	return multiPolygon;
 
 
