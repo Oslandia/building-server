@@ -33,9 +33,13 @@ def toglTF(rows,origin = [0,0,0]):
 		data[1].append(struct.pack('H'*len(ptsIdx[1]), *ptsIdx[1]))
 		data[2].append(len(ptsIdx[0]))
 		data[3].append(len(ptsIdx[1]))
-	outputJSON(data)
-	outputBin(data)
+	json = outputJSON(data)
+	binary = outputBin(data)
 
+	fj = open("test.gltf", "w")
+	fb = open("test.bin", "w")
+	fj.write(json)
+	fb.write(binary)
 	#print nodes
 
 def outputBin(data):
@@ -57,8 +61,8 @@ def outputJSON(data):
 "objects": {{
 	"byteLength": {0},
 	"type": "arraybuffer",
-	"uri": 
-}}""".format("k")#sum(sizeVce) + sum(sizeIdx))
+	"uri": "test.bin"
+}}""".format(sum(sizeVce) + sum(sizeIdx))
 
 	# Buffer view
 	bufferViews = """\
@@ -95,20 +99,24 @@ def outputJSON(data):
     "count": {4},
     "type": "VEC3"
 }},""".format(i, 0 if i == 0 else sizeIdx[i-1], 0 if i == 0 else sizeVce[i-1], data[3][i], data[2][i])
+	accessors = accessors[0:len(accessors)-1]
 
-	# Mesh
+	# Meshes
 	meshes = ""
 	for i in range(0, nodeNb):
 		meshes = meshes + """\
 "M{0}": {{
-	"attributes": {{
-		"POSITION": "AV{0}"
-	}}
-	"indices": "AI{0}"
-	"material": "defaultMaterial"
-	"mode": 4
+	"primitives": [{{
+		"attributes": {{
+			"POSITION": "AV{0}"
+		}},
+		"indices": "AI{0}",
+		"material": "defaultMaterial",
+		"mode": 4
+	}}]
 }},""".format(i)
 
+	meshes = meshes[0:len(meshes)-1]
 	# Nodes
 	nodes = ""
 	for i in range(0, nodeNb):
@@ -118,9 +126,12 @@ def outputJSON(data):
 		"M{0}"
 	]
 }},""".format(i)
+	nodes = nodes[0:len(nodes)-1]
+
 	sceneNodes = ""
 	for i in range(0, nodeNb):
-		sceneNodes = sceneNodes + "N{0},".format(i)
+		sceneNodes = sceneNodes + "\"N{0}\",".format(i)
+	sceneNodes = sceneNodes[0:len(sceneNodes)-1]
 
 	# Final glTF
 	JSON = """\
@@ -136,7 +147,7 @@ def outputJSON(data):
 	"nodes": {{
 		{1}
 	}},
-	"mesh": {{
+	"meshes": {{
 		{2}
 	}},
 	"accessors": {{
