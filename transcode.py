@@ -282,10 +282,19 @@ def parse(wkb):
 # test code
 
 import psycopg2
-connection = psycopg2.connect('dbname=lyon user=jeremy')
+connection = psycopg2.connect('dbname=lyon user=jeremy password=jeremy')
 cursor = connection.cursor()
 
-cursor.execute("select ST_AsBinary(geom) from lyon1 AS g limit 3")
+cursor.execute("select ST_AsBinary(geom) from lyongeom AS g limit 3")
 rows = cursor.fetchall();
 #wkb_bin = cursor.fetchone()[0]
 toglTF(rows, [1842315.409503, 5176011.019509, 201.437597]);
+
+# geoJSON export as done by tinyOWS
+cursor.execute("select ST_AsGeoJSON(ST_Transform(\"geom\"::geometry,3946),0, 1) from lyongeom AS g limit 3")
+rows = cursor.fetchall();
+geojson = ""
+for r in rows:
+	geojson += r[0]
+fjson = open("test.geojson", "w")
+fjson.write(geojson)
