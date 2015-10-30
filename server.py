@@ -18,12 +18,21 @@ def application(environ, start_response):
 
 	tile = param['tile']
 	city = param['city']
+	outputFormat = param['format']
 	offset = compute_offset(tile, city)
 	cityTable = settings.CITIES[city]['tablename']
 
-	cursor.execute("select ST_AsBinary(geom) from {0} where quadtile='{1}'".format(cityTable, tile))
-	rows = cursor.fetchall();
-	output = transcode.toglTF(rows, offset);
+	if outputFormat == "GeoJSON":
+		cursor.execute("select ST_AsGeoJSON(geom) from {0} where quadtile='{1}'".format(cityTable, tile))
+		rows = cursor.fetchall();
+		output = ""
+		for r in rows:
+			output += r[0] + ",\n"
+		output = output[0:len(output)-2]
+	else:	
+		cursor.execute("select ST_AsBinary(geom) from {0} where quadtile='{1}'".format(cityTable, tile))
+		rows = cursor.fetchall();
+		output = transcode.toglTF(rows, offset);
 
 	return output
 
