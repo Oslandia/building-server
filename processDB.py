@@ -29,7 +29,7 @@ def processDB(connection, extent, cursor, maxTileSize = 2000):
 			p2 = "{0} {1}".format(tileExtent[0][0], tileExtent[1][1])
 			p3 = "{0} {1}".format(tileExtent[1][0], tileExtent[1][1])
 			p4 = "{0} {1}".format(tileExtent[1][0], tileExtent[0][1])
-			scoreFunction = "gid" #"ST_3DArea(geom)" FIX : try/catch and remove geometries that cause error ?
+			scoreFunction = "ST_NPoints(geom)" # "ST_3DArea(geom)" #FIX : clean polyhedral surfaces before calling the function
 			query = "SELECT gid, Box2D(geom), {4} AS \"score\" FROM lyongeom WHERE (geom && 'POLYGON(({0}, {1}, {2}, {3}, {0}))'::geometry) ORDER BY score DESC".format(p1, p2, p3, p4, scoreFunction)
 			qt0 = time.time()
 			cursor.execute(query)
@@ -70,12 +70,30 @@ def processDB(connection, extent, cursor, maxTileSize = 2000):
 	for i in index:
 		for j in index[i]:
 			query = "UPDATE lyongeom SET quadtile = '{0}' WHERE gid = {1}".format(i, j[0])
-			print query
 			cursor.execute(query)
-	connection.commit()
 	print "Table update time : {0}".format(time.time() - t1)
-	# TODO
+	t2 = time.time()
+	cursor.execute("CREATE INDEX tileIdx ON lyongeom (quadtile)")
+	print "Index creation time : {0}".format(time.time() - t2)
+	connection.commit()
 	
+	# Query timing
+	"""
+	tileExtent = [[1843816.94334, 5176036.4587], [1845816.94334, 5178036.4587]]
+	p1 = "{0} {1}".format(tileExtent[0][0], tileExtent[0][1])
+	p2 = "{0} {1}".format(tileExtent[0][0], tileExtent[1][1])
+	p3 = "{0} {1}".format(tileExtent[1][0], tileExtent[1][1])
+	p4 = "{0} {1}".format(tileExtent[1][0], tileExtent[0][1])
+	query = "SELECT gid FROM lyongeom WHERE (geom && 'POLYGON(({0}, {1}, {2}, {3}, {0}))'::geometry)".format(p1, p2, p3, p4)
+	t3 = time.time()
+	cursor.execute(query)
+	print time.time() - t3
+	print cursor.rowcount
+	t3 = time.time()
+	cursor.execute("SELECT gid FROM lyongeom WHERE quadtile = '0/3/3'")
+	print time.time() - t3
+	print cursor.rowcount"""
+
 
 def divide(extent, geometries, depth, xOffset, yOffset, tileSize, index):
 	for i in range(0, 2):

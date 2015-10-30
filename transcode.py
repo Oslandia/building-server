@@ -41,6 +41,7 @@ def toglTF(rows,origin = [0,0,0]):
 	fj.write(json)
 	fb.write(binary)
 	#print nodes
+	return json
 
 def outputBin(data):
 	binary = ''.join(data[1])
