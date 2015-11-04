@@ -23,12 +23,14 @@ def application(environ, start_response):
 	cityTable = settings.CITIES[city]['tablename']
 
 	if outputFormat == "GeoJSON":
-		cursor.execute("select ST_AsGeoJSON(geom) from {0} where quadtile='{1}'".format(cityTable, tile))
+		cursor.execute("select gid, ST_AsGeoJSON(ST_Transform(\"geom\"::geometry,3946),0, 1) AS \"geom\" from {0} where quadtile='{1}'".format(cityTable, tile))
 		rows = cursor.fetchall();
-		output = ""
+		output = '{"type": "FeatureCollection", "crs":{"type":"name","properties":{"name":"EPSG:3946"}}, "features": ['
 		for r in rows:
-			output += r[0] + ",\n"
-		output = output[0:len(output)-2]
+			output += '{{"type":"Feature", "id": "lyongeom.{0}", "properties":{{"gid": "{0}"}}, "geometry": {1}}}'.format(r[0], r[1])
+			output += ",\n"
+		if(len(rows) != 0): output = output[0:len(output)-2]
+		output += ']}'
 	else:	
 		cursor.execute("select ST_AsBinary(geom) from {0} where quadtile='{1}'".format(cityTable, tile))
 		rows = cursor.fetchall();
