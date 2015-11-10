@@ -30,7 +30,7 @@ def processDB(connection, extent, cursor, maxTileSize = 2000):
 			p3 = "{0} {1}".format(tileExtent[1][0], tileExtent[1][1])
 			p4 = "{0} {1}".format(tileExtent[1][0], tileExtent[0][1])
 			scoreFunction = "ST_NPoints(geom)" # "ST_3DArea(geom)" #FIX : clean polyhedral surfaces before calling the function
-			query = "SELECT gid, Box2D(geom), {4} AS \"score\" FROM lyongeom WHERE (geom && 'POLYGON(({0}, {1}, {2}, {3}, {0}))'::geometry) ORDER BY score DESC".format(p1, p2, p3, p4, scoreFunction)
+			query = "SELECT gid, Box2D(geom), {4} AS \"score\" FROM lyongeom WHERE (geom && 'POLYGON(({0}, {1}, {2}, {3}, {0}))'::geometry) ORDER BY score ASC".format(p1, p2, p3, p4, scoreFunction)
 			qt0 = time.time()
 			cursor.execute(query)
 			qt += time.time() - qt0
@@ -107,7 +107,7 @@ def divide(extent, geometries, depth, xOffset, yOffset, tileSize, index):
 			index[coord] = geoms
 			if len(geoms) > THRESHOLD:
 				index[coord] = geoms[0:THRESHOLD]
-				divide(tileExtent, geoms[THRESHOLD:len(geoms)], depth + 1, (xOffset + i) * 2, (yOffset + j) * 2, tileSize /2., index)
+				divide(tileExtent, geoms[THRESHOLD:len(geoms)], depth + 1, (xOffset + i) * 2, (yOffset + j) * 2, tileSize / 2., index)
 			else:
 				index[coord] = geoms
 

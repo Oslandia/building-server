@@ -32,10 +32,15 @@ def application(environ, start_response):
 		if(len(rows) != 0): output = output[0:len(output)-2]
 		output += ']}'
 	else:	
-		cursor.execute("select ST_AsBinary(geom) from {0} where quadtile='{1}'".format(cityTable, tile))
+		cursor.execute("select ST_AsBinary(geom), Box3D(geom) from {0} where quadtile='{1}'".format(cityTable, tile))
 		rows = cursor.fetchall();
-		output = transcode.toglTF(rows, offset);
+		if len(rows) == 0:	# TODO : remove or replace with empty glTF
+			cursor.execute("select ST_AsBinary(geom), Box3D(geom) from lyongeom AS g limit 1")
+			rows = cursor.fetchall();
+		output = transcode.toglTF(rows, True, offset);
 
+	cursor.close()
+	connection.close()
 	return output
 
 def connect_db():

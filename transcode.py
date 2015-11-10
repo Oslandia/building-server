@@ -5,11 +5,12 @@ import binascii
 import math
 import triangle
 
-def toglTF(rows,origin = [0,0,0]):
+def toglTF(rows, bgltf = False, origin = [0,0,0]):
 	"""
 	Converts Well-Known Binary geometry to glTF file
 	"""
 	nodes = [];
+	normals = [];
 	bb = [];
 	for i in range(0, len(rows)):
 		mp = parse(bytes(rows[i][0]));
@@ -25,6 +26,7 @@ def toglTF(rows,origin = [0,0,0]):
 				else:
 					triangles.append(poly[0])
 		nodes.append(triangles)
+		normals.append(computeNormals(triangles))
 
 		box3D = rows[i][1][6:len(rows[i][1])-1]	# remove "BOX3D(" and ")"
 		part = box3D.partition(',')
@@ -39,32 +41,52 @@ def toglTF(rows,origin = [0,0,0]):
 	data = ([], [], [], [])
 	binVertices = []
 	binIndices = []
+	binNormals = []
 	nVertices = []
 	nIndices = []
 	for i in range(0,len(nodes)):
-		ptsIdx = indexation(nodes[i]);
+		ptsIdx = indexation(nodes[i], normals[i]);
 		packedVertices = ''.join(ptsIdx[0])
 		binVertices.append(packedVertices)
-		binIndices.append(struct.pack('H'*len(ptsIdx[1]), *ptsIdx[1]))
+		binIndices.append(struct.pack('H'*len(ptsIdx[2]), *ptsIdx[2]))
+		binNormals.append(''.join(ptsIdx[1]))
 		nVertices.append(len(ptsIdx[0]))
-		nIndices.append(len(ptsIdx[1]))
+		nIndices.append(len(ptsIdx[2]))
 
-	json = outputJSON(binVertices, binIndices, nVertices, nIndices, bb)
-	binary = outputBin(binVertices, binIndices)
+	if bgltf:
+		binary = outputbglTF(binVertices, binIndices, binNormals, nVertices, nIndices, bb)
+		return binary
+	else:
+		json = outputJSON(binVertices, binIndices, binNormals, nVertices, nIndices, bb, False, "test.bin")
+		binary = outputBin(binVertices, binIndices, binNormals)
+		return json
 
-	#fj = open("test.gltf", "w")
-	#fb = open("test.bin", "w")
-	#fj.write(json)
-	#fb.write(binary)
-	#print nodes
-	return json
+def outputbglTF(binVertices, binIndices, binNormals, nVertices, nIndices, bb):
+	scene = outputJSON(binVertices, binIndices, binNormals, nVertices, nIndices, bb, True)
 
-def outputBin(binVertices, binIndices):
+	scene = struct.pack(str(len(scene)) + 's', scene)
+	# body must be 4-byte aligned
+	trailing = len(scene) % 4
+	if trailing != 0:
+		scene = scene + struct.pack(str(trailing) + 's', ' ' * trailing)
+
+	body = outputBin(binVertices, binIndices, binNormals)
+
+	header = struct.pack('4s', "glTF") + \
+				struct.pack('I', 1) + \
+				struct.pack('I', 20 + len(body) + len(scene)) + \
+				struct.pack('I', len(scene)) + \
+				struct.pack('I', 0)
+
+	return header + scene + body
+
+def outputBin(binVertices, binIndices, binNormals):
 	binary = ''.join(binVertices)
+	binary = binary + ''.join(binNormals)
 	binary = binary + ''.join(binIndices)
 	return binary
 
-def outputJSON(binVertices, binIndices, nVertices, nIndices, bb):
+def outputJSON(binVertices, binIndices, binNormals, nVertices, nIndices, bb, bgltf, uri = "data:,"):
 	# Buffer
 	nodeNb = len(binVertices)
 	sizeIdx = []
@@ -73,28 +95,35 @@ def outputJSON(binVertices, binIndices, nVertices, nIndices, bb):
 		sizeVce.append(len(binVertices[i]))
 		sizeIdx.append(len(binIndices[i]))
 
-
+	uriStr = uri
+	if uri != "":
+		uriStr = ',"uri": "{0}"'.format(uri)
 	buffers = """\
-"objects": {{
+"KHR_binary_glTF": {{
 	"byteLength": {0},
-	"type": "arraybuffer",
-	"uri": "test.bin"
-}}""".format(sum(sizeVce) + sum(sizeIdx))
+	"type": "arraybuffer"{1}
+}}""".format(2 * sum(sizeVce) + sum(sizeIdx), uriStr)
 
 	# Buffer view
 	bufferViews = """\
 "BV_indices": {{
-	"buffer": "objects",
+	"buffer": "KHR_binary_glTF",
 	"byteLength": {0},
-	"byteOffset": {1},
+	"byteOffset": {2},
 	"target": 34963
 }},
 "BV_vertices": {{
-	"buffer": "objects",
+	"buffer": "KHR_binary_glTF",
 	"byteLength": {1},
 	"byteOffset": 0,
 	"target": 34962
-}}""".format(sum(sizeIdx), sum(sizeVce))
+}},
+"BV_normals": {{
+	"buffer": "KHR_binary_glTF",
+	"byteLength": {1},
+	"byteOffset": {1},
+	"target": 34962
+}}""".format(sum(sizeIdx), sum(sizeVce), 2 * sum(sizeVce))
 
 	# Accessor
 	accessors = ""
@@ -119,6 +148,16 @@ def outputJSON(binVertices, binIndices, nVertices, nIndices, bb):
     "max": [{5}],
     "min": [{6}],
     "type": "VEC3"
+}},
+"AN_{0}": {{
+	"bufferView": "BV_normals",
+    "byteOffset": {2},
+    "byteStride": 12,
+    "componentType": 5126,
+    "count": {4},
+    "max": [1,1,1],
+    "min": [-1,-1,-1],
+    "type": "VEC3"
 }},""".format(i, sum(sizeIdx[0:i]), sum(sizeVce[0:i]), nIndices[i], nVertices[i], bbmax, bbmin)
 	accessors = accessors[0:len(accessors)-1]
 
@@ -129,7 +168,8 @@ def outputJSON(binVertices, binIndices, nVertices, nIndices, bb):
 "M{0}": {{
 	"primitives": [{{
 		"attributes": {{
-			"POSITION": "AV_{0}"
+			"POSITION": "AV_{0}",
+			"NORMAL": "AN_{0}"
 		}},
 		"indices": "AI_{0}",
 		"material": "defaultMaterial",
@@ -153,6 +193,14 @@ def outputJSON(binVertices, binIndices, nVertices, nIndices, bb):
 	for i in range(0, nodeNb):
 		sceneNodes = sceneNodes + "\"N{0}\",".format(i)
 	sceneNodes = sceneNodes[0:len(sceneNodes)-1]
+
+	# Extension
+	extension = ""
+	if bgltf:
+		extension = """,\
+"extensionsUsed" : [
+    "KHR_binary_glTF"
+]"""
 
 	# Final glTF
 	JSON = """\
@@ -184,8 +232,8 @@ def outputJSON(binVertices, binIndices, nVertices, nIndices, bb):
 		"defaultMaterial": {{
 			"name": "None"
 		}}
-	}}
-}}""".format(sceneNodes, nodes, meshes, accessors, bufferViews, buffers)
+	}}{6}
+}}""".format(sceneNodes, nodes, meshes, accessors, bufferViews, buffers, extension)
 
 	return JSON
 
@@ -197,10 +245,10 @@ def moveOrigin(nodes, delta):
 	for n in nodes:
 		for t in n:
 			for i in range(0,3):
-				t[i] = struct.pack('fff', t[i][0] - delta[0], t[i][2] - delta[2], t[i][1] - delta[1])
+				t[i] = struct.pack('fff', t[i][1] - delta[1], t[i][2] - delta[2], t[i][0] - delta[0])
 
 
-def indexation(triangles):
+def indexation(triangles, normals):
 	"""
 	Creates an index for points
 	Replaces points in triangles by their index
@@ -208,19 +256,22 @@ def indexation(triangles):
 	index = {};
 	indices = [];
 	orderedPoints = [];
+	orderedNormals = [];
 	maxIdx = 0;
 
-	for t in triangles:
-		for pt in t:
-			if pt in index:
-				indices.append(index[pt]);
+	for i in range(0, len(triangles)):
+		n = struct.pack('fff', *normals[i])
+		for pt in triangles[i]:
+			if (n,pt) in index:
+				indices.append(index[(n,pt)]);
 			else:
 				orderedPoints.append(pt)
-				index[pt] = maxIdx;
+				orderedNormals.append(n)
+				index[(n,pt)] = maxIdx;
 				indices.append(maxIdx);
 				maxIdx+=1;
 
-	return (orderedPoints, indices)
+	return (orderedPoints, orderedNormals, indices)
 
 
 def triangulate(polygon):
@@ -253,13 +304,42 @@ def triangulate(polygon):
 		for v in range(0,len(polygon)):
 			polygon2D.append([polygon[v][0], polygon[v][1]]);
 
+	triangulation = triangle.triangulate({'vertices': polygon2D, 'segments': segments})
+	if 'triangles' not in triangulation:	# if polygon is degenerate
+		return []
 	trianglesIdx = triangle.triangulate({'vertices': polygon2D, 'segments': segments})['triangles'];
 	triangles = [];
 
 	for t in trianglesIdx:
-		triangles.append([polygon[t[0]], polygon[t[1]],polygon[t[2]]])
+		# triangulation may break triangle orientation, test it before adding triangles
+		if(t[0] > t[1] > t[2] or t[2] > t[0] > t[1] or t[1] > t[2] > t[0]):
+			triangles.append([polygon[t[1]], polygon[t[0]],polygon[t[2]]])
+		else:
+			triangles.append([polygon[t[0]], polygon[t[1]],polygon[t[2]]])
 
 	return triangles
+
+
+def computeNormals(triangles):
+	normals = []
+	for t in triangles:
+		U = [t[1][0] - t[0][0],
+			t[1][1] - t[0][1],
+			t[1][2] - t[0][2]]
+		V = [t[2][0] - t[0][0],
+			t[2][1] - t[0][1],
+			t[2][2] - t[0][2]]
+		N = [U[1] * V[2] - V[1] * U[2],
+			U[2] * V[0] - V[2] * U[0],
+			U[0] * V[1] - V[0] * U[1]]
+		norm = (N[0] ** 2 + N[1] ** 2 + N[2] ** 2) ** 0.5
+		if norm == 0:
+			normals.append([1,0,0])
+		else:
+			normals.append([N[0] / norm,
+				N[1] / norm,
+				N[2] / norm])
+	return normals
 
 
 def parse(wkb):
@@ -299,25 +379,3 @@ def parse(wkb):
 	#print multiPolygon;
 	#print len(multiPolygon);
 	return multiPolygon;
-
-
-
-# test code
-
-import psycopg2
-connection = psycopg2.connect('dbname=lyon user=jeremy password=jeremy')
-cursor = connection.cursor()
-
-cursor.execute("select ST_AsBinary(geom), Box3D(geom) from lyongeom AS g limit 30")
-rows = cursor.fetchall();
-#wkb_bin = cursor.fetchone()[0]
-toglTF(rows, [1842315.409503, 5176011.019509, 201.437597]);
-
-# geoJSON export as done by tinyOWS
-cursor.execute("select ST_AsGeoJSON(ST_Transform(\"geom\"::geometry,3946),0, 1) from lyongeom AS g limit 3")
-rows = cursor.fetchall();
-geojson = ""
-for r in rows:
-	geojson += r[0]
-#fjson = open("test.geojson", "w")
-#fjson.write(geojson)
