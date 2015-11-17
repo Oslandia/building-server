@@ -128,8 +128,8 @@ def outputJSON(binVertices, binIndices, binNormals, nVertices, nIndices, bb, bgl
 	# Accessor
 	accessors = ""
 	for i in range(0, nodeNb):
-		bbmin = str(bb[i][0][0]) + ',' + str(bb[i][0][2]) + ',' + str(bb[i][0][1])
-		bbmax = str(bb[i][1][0]) + ',' + str(bb[i][1][2]) + ',' + str(bb[i][1][1])
+		bbmin = str(bb[i][0][1]) + ',' + str(bb[i][0][2]) + ',' + str(bb[i][0][0])
+		bbmax = str(bb[i][1][1]) + ',' + str(bb[i][1][2]) + ',' + str(bb[i][1][0])
 		accessors = accessors + """\
 "AI_{0}": {{
 	"bufferView": "BV_indices",
