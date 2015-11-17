@@ -5,13 +5,15 @@ import psycopg2
 import math
 import pprint
 import time
+import sys
+import settings
 
 THRESHOLD = 20
 
 def inside(box, point):
 	return box[0][0] <= point[0] < box[1][0] and box[0][1] <= point[1] < box[1][1]
 
-def processDB(connection, extent, cursor, maxTileSize = 2000):
+def processDB(connection, extent, table, cursor, maxTileSize = 2000):
 	extentX = extent[1][0] - extent[0][0]
 	extentY = extent[1][1] - extent[0][1]
 	print extentX
@@ -112,13 +114,27 @@ def divide(extent, geometries, depth, xOffset, yOffset, tileSize, index):
 				index[coord] = geoms
 
 
-# test code
-connection = psycopg2.connect('dbname=lyon user=jeremy password=jeremy')
-cursor = connection.cursor()
-cursor.execute("ALTER TABLE lyongeom DROP COLUMN IF EXISTS quadtile")	#reset table
-connection.commit()
+if __name__ == '__main__':
+	args = sys.argv;
+	if len(args) <= 1:
+		exit("No city name provided")
 
-extent = [[1837816.94334,5170036.4587], [1847692.32501,5178412.82698]]
-processDB(connection, extent, cursor)
-cursor.close()
-connection.close()
+	cityName = args[1];
+	if cityName not in settings.CITIES:
+		exit("City " + cityName + " is not defined in settings.py")
+
+	city = settings.CITIES[cityName]
+	if "tablename" not in city or "extent" not in city or "maxtilesize" not in city:
+		exit(cityName + " not properly defined")
+
+
+
+	conn_string = "host='%s' dbname='%s' user='%s' password='%s' port='%s'" % (settings.DB_INFOS['host'], settings.DB_INFOS['dbname'], settings.DB_INFOS['user'], settings.DB_INFOS['password'], settings.DB_INFOS['port'])
+	connection = psycopg2.connect(conn_string)
+	cursor = connection.cursor()
+	cursor.execute("ALTER TABLE " + city["tablename"] + " DROP COLUMN IF EXISTS quadtile")	#reset table
+	connection.commit()
+
+	processDB(connection, city["extent"], city["tablename"], cursor, city["maxtilesize"])
+	cursor.close()
+	connection.close()
