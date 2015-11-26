@@ -20,6 +20,7 @@ def processDB(connection, extent, table, cursor, maxTileSize = 2000):
 	print extentY
 
 	index = {}
+	bboxIndex = {}
 	t0 = time.time()
 	qt = 0
 
@@ -32,7 +33,7 @@ def processDB(connection, extent, table, cursor, maxTileSize = 2000):
 			p3 = "{0} {1}".format(tileExtent[1][0], tileExtent[1][1])
 			p4 = "{0} {1}".format(tileExtent[1][0], tileExtent[0][1])
 			scoreFunction = "ST_NPoints(geom)" # "ST_3DArea(geom)" #FIX : clean polyhedral surfaces before calling the function
-			query = "SELECT gid, Box2D(geom), {4} AS \"score\" FROM lyongeom WHERE (geom && 'POLYGON(({0}, {1}, {2}, {3}, {0}))'::geometry) ORDER BY score ASC".format(p1, p2, p3, p4, scoreFunction)
+			query = "SELECT gid, Box2D(geom), {4} AS \"score\" FROM {5} WHERE (geom && 'POLYGON(({0}, {1}, {2}, {3}, {0}))'::geometry) ORDER BY score ASC".format(p1, p2, p3, p4, scoreFunction, table)
 			qt0 = time.time()
 			cursor.execute(query)
 			qt += time.time() - qt0
@@ -43,18 +44,35 @@ def processDB(connection, extent, table, cursor, maxTileSize = 2000):
 				part = box2D.partition(',')
 				p1 = part[0].partition(' ')
 				p2 = part[2].partition(' ')
-				centroid = ((float(p2[0]) + float(p1[0])) / 2., (float(p2[2]) + float(p1[2])) / 2.)
+				p1 = [float(p1[0]), float(p1[2])]
+				p2 = [float(p2[0]), float(p2[2])]
+				centroid = ((p2[0] + p1[0]) / 2., (p2[1] + p1[1]) / 2.)
 				if inside(tileExtent, centroid):
-					geoms.append((r[0], centroid, r[2]))
+					geoms.append((r[0], centroid, r[2], p1, p2))
+			if len(geoms) == 0:
+				break
+
 			coord = "{0}/{1}/{2}".format(0, j, i)
 			if len(geoms) > THRESHOLD:
 				index[coord] = geoms[0:THRESHOLD]
-				divide(tileExtent, geoms[THRESHOLD:len(geoms)], 1, i * 2, j * 2, maxTileSize / 2., index)
+				bbox = divide(tileExtent, geoms[THRESHOLD:len(geoms)], 1, i * 2, j * 2, maxTileSize / 2., index, bboxIndex)
 			else:
+				bbox = [[float("inf"),float("inf")],[-float("inf"),-float("inf")]]
 				index[coord] = geoms
 
-	"""pp = pprint.PrettyPrinter(indent = 4, width = 80, depth = 1)
+			for geom in index[coord]:
+				p1 = geom[3]
+				p2 = geom[4]
+				bbox[0][0] = min(bbox[0][0], p1[0], p2[0])
+				bbox[0][1] = min(bbox[0][1], p1[1], p2[1])
+				bbox[1][0] = max(bbox[0][0], p1[0], p2[0])
+				bbox[1][1] = max(bbox[0][1], p1[1], p2[1])
+			bboxIndex[coord] = bbox
+
+
+	"""pp = pprint.PrettyPrinter(indent = 4, width = 80, depth = 3)
 	pp.pprint(index)
+	pp.pprint(bboxIndex)
 	idSet = set()
 	for i in index:
 		for j in index[i]:
@@ -68,15 +86,25 @@ def processDB(connection, extent, table, cursor, maxTileSize = 2000):
 
 	t1 = time.time()
 	# create index
-	cursor.execute("ALTER TABLE lyongeom ADD COLUMN quadtile varchar(10)")
+	cursor.execute("ALTER TABLE {0} ADD COLUMN quadtile varchar(10)".format(table))
 	for i in index:
 		for j in index[i]:
-			query = "UPDATE lyongeom SET quadtile = '{0}' WHERE gid = {1}".format(i, j[0])
+			query = "UPDATE {2} SET quadtile = '{0}' WHERE gid = {1}".format(i, j[0], table)
 			cursor.execute(query)
 	print "Table update time : {0}".format(time.time() - t1)
 	t2 = time.time()
-	cursor.execute("CREATE INDEX tileIdx ON lyongeom (quadtile)")
+	cursor.execute("CREATE INDEX tileIdx ON {0} (quadtile)".format(table))
 	print "Index creation time : {0}".format(time.time() - t2)
+
+	# create bbox table
+	t3 = time.time()
+	cursor.execute("CREATE TABLE {0} (quadtile varchar(10) PRIMARY KEY, bbox Box2D)".format(table + "_bbox"))
+	for i in bboxIndex:
+		b = bboxIndex[i]
+		bbox_str = str(b[0][0]) + " " + str(b[0][1]) + "," + str(b[1][0]) + " " + str(b[1][1])
+		query = "INSERT INTO {0} values ('{1}', Box2D(ST_GeomFromText('LINESTRING({2})')))".format(table + "_bbox", i, bbox_str) # a simpler query probabliy exists
+		cursor.execute(query)
+	print "Bounding box table creation time : {0}".format(time.time() - t3)
 	connection.commit()
 	
 	# Query timing
@@ -97,7 +125,8 @@ def processDB(connection, extent, table, cursor, maxTileSize = 2000):
 	print cursor.rowcount"""
 
 
-def divide(extent, geometries, depth, xOffset, yOffset, tileSize, index):
+def divide(extent, geometries, depth, xOffset, yOffset, tileSize, index, bboxIndex):
+	superBbox = [[float("inf"),float("inf")],[-float("inf"),-float("inf")]]
 	for i in range(0, 2):
 		for j in range(0, 2):
 			tileExtent = [[extent[0][0] + i*tileSize, extent[0][1] + j*tileSize], [extent[0][0] + (i+1)*tileSize, extent[0][1] + (j+1)*tileSize]]
@@ -105,13 +134,32 @@ def divide(extent, geometries, depth, xOffset, yOffset, tileSize, index):
 			for g in geometries:
 				if inside(tileExtent, g[1]):
 					geoms.append(g)
+			if len(geoms) == 0:
+				break;
+
 			coord = "{0}/{1}/{2}".format(depth, yOffset + j, xOffset + i)
 			index[coord] = geoms
 			if len(geoms) > THRESHOLD:
 				index[coord] = geoms[0:THRESHOLD]
-				divide(tileExtent, geoms[THRESHOLD:len(geoms)], depth + 1, (xOffset + i) * 2, (yOffset + j) * 2, tileSize / 2., index)
+				bbox = divide(tileExtent, geoms[THRESHOLD:len(geoms)], depth + 1, (xOffset + i) * 2, (yOffset + j) * 2, tileSize / 2., index, bboxIndex)
 			else:
+				bbox = [[float("inf"),float("inf")],[-float("inf"),-float("inf")]]
 				index[coord] = geoms
+
+			for geom in index[coord]:
+				p1 = geom[3]
+				p2 = geom[4]
+				bbox[0][0] = min(bbox[0][0], p1[0], p2[0])
+				bbox[0][1] = min(bbox[0][1], p1[1], p2[1])
+				bbox[1][0] = max(bbox[0][0], p1[0], p2[0])
+				bbox[1][1] = max(bbox[0][1], p1[1], p2[1])
+			bboxIndex[coord] = bbox
+
+			superBbox[0][0] = min(superBbox[0][0], bbox[0][0])
+			superBbox[0][1] = min(superBbox[0][1], bbox[0][1])
+			superBbox[1][0] = max(superBbox[0][0], bbox[0][0])
+			superBbox[1][1] = max(superBbox[0][1], bbox[0][1])
+	return superBbox
 
 
 if __name__ == '__main__':
@@ -133,6 +181,7 @@ if __name__ == '__main__':
 	connection = psycopg2.connect(conn_string)
 	cursor = connection.cursor()
 	cursor.execute("ALTER TABLE " + city["tablename"] + " DROP COLUMN IF EXISTS quadtile")	#reset table
+	cursor.execute("DROP TABLE IF EXISTS " + city["tablename"] + "_bbox")	#reset table
 	connection.commit()
 
 	processDB(connection, city["extent"], city["tablename"], cursor, city["maxtilesize"])
