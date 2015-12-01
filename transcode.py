@@ -88,10 +88,10 @@ def outputBin(binVertices, binIndices, binNormals):
 
 def outputJSON(binVertices, binIndices, binNormals, nVertices, nIndices, bb, bgltf, uri = "data:,"):
 	# Buffer
-	nodeNb = len(binVertices)
+	meshNb = len(binVertices)
 	sizeIdx = []
 	sizeVce = []
-	for i in range(0, nodeNb):
+	for i in range(0, meshNb):
 		sizeVce.append(len(binVertices[i]))
 		sizeIdx.append(len(binIndices[i]))
 
@@ -127,7 +127,7 @@ def outputJSON(binVertices, binIndices, binNormals, nVertices, nIndices, bb, bgl
 
 	# Accessor
 	accessors = ""
-	for i in range(0, nodeNb):
+	for i in range(0, meshNb):
 		bbmin = str(bb[i][0][1]) + ',' + str(bb[i][0][2]) + ',' + str(bb[i][0][0])
 		bbmax = str(bb[i][1][1]) + ',' + str(bb[i][1][2]) + ',' + str(bb[i][1][0])
 		accessors = accessors + """\
@@ -163,7 +163,7 @@ def outputJSON(binVertices, binIndices, binNormals, nVertices, nIndices, bb, bgl
 
 	# Meshes
 	meshes = ""
-	for i in range(0, nodeNb):
+	for i in range(0, meshNb):
 		meshes = meshes + """\
 "M{0}": {{
 	"primitives": [{{
@@ -178,21 +178,18 @@ def outputJSON(binVertices, binIndices, binNormals, nVertices, nIndices, bb, bgl
 }},""".format(i)
 
 	meshes = meshes[0:len(meshes)-1]
-	# Nodes
-	nodes = ""
-	for i in range(0, nodeNb):
-		nodes = nodes + """\
-"N{0}": {{
-	"meshes": [
-		"M{0}"
-	]
-}},""".format(i)
-	nodes = nodes[0:len(nodes)-1]
 
-	sceneNodes = ""
-	for i in range(0, nodeNb):
-		sceneNodes = sceneNodes + "\"N{0}\",".format(i)
-	sceneNodes = sceneNodes[0:len(sceneNodes)-1]
+	# Nodes
+	meshesId = ""
+	for i in range(0, meshNb):
+		meshesId += '"M{0}",'.format(i)
+	meshesId = meshesId[0:len(meshesId)-1]
+
+	nodes = ""
+	nodes = nodes + """\
+"node": {{
+	"meshes": [{0}]
+}}""".format(meshesId)
 
 	# Extension
 	extension = ""
@@ -209,31 +206,31 @@ def outputJSON(binVertices, binIndices, binNormals, nVertices, nIndices, bb, bgl
 	"scenes": {{
 		"defaultScene": {{
 			"nodes": [
-				{0}
+				"node"
 			]
 		}}
 	}},
 	"nodes": {{
-		{1}
+		{0}
 	}},
 	"meshes": {{
-		{2}
+		{1}
 	}},
 	"accessors": {{
-		{3}
+		{2}
 	}},
 	"bufferViews": {{
-		{4}
+		{3}
 	}},
 	"buffers": {{
-		{5}
+		{4}
 	}},
 	"materials": {{
 		"defaultMaterial": {{
 			"name": "None"
 		}}
-	}}{6}
-}}""".format(sceneNodes, nodes, meshes, accessors, bufferViews, buffers, extension)
+	}}{5}
+}}""".format(nodes, meshes, accessors, bufferViews, buffers, extension)
 
 	return JSON
 
