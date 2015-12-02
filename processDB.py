@@ -65,8 +65,8 @@ def processDB(connection, extent, table, cursor, maxTileSize = 2000):
 				p2 = geom[4]
 				bbox[0][0] = min(bbox[0][0], p1[0], p2[0])
 				bbox[0][1] = min(bbox[0][1], p1[1], p2[1])
-				bbox[1][0] = max(bbox[0][0], p1[0], p2[0])
-				bbox[1][1] = max(bbox[0][1], p1[1], p2[1])
+				bbox[1][0] = max(bbox[1][0], p1[0], p2[0])
+				bbox[1][1] = max(bbox[1][1], p1[1], p2[1])
 			bboxIndex[coord] = bbox
 
 
@@ -151,14 +151,14 @@ def divide(extent, geometries, depth, xOffset, yOffset, tileSize, index, bboxInd
 				p2 = geom[4]
 				bbox[0][0] = min(bbox[0][0], p1[0], p2[0])
 				bbox[0][1] = min(bbox[0][1], p1[1], p2[1])
-				bbox[1][0] = max(bbox[0][0], p1[0], p2[0])
-				bbox[1][1] = max(bbox[0][1], p1[1], p2[1])
+				bbox[1][0] = max(bbox[1][0], p1[0], p2[0])
+				bbox[1][1] = max(bbox[1][1], p1[1], p2[1])
 			bboxIndex[coord] = bbox
 
 			superBbox[0][0] = min(superBbox[0][0], bbox[0][0])
 			superBbox[0][1] = min(superBbox[0][1], bbox[0][1])
-			superBbox[1][0] = max(superBbox[0][0], bbox[0][0])
-			superBbox[1][1] = max(superBbox[0][1], bbox[0][1])
+			superBbox[1][0] = max(superBbox[1][0], bbox[1][0])
+			superBbox[1][1] = max(superBbox[1][1], bbox[1][1])
 	return superBbox
 
 
