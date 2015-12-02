@@ -71,7 +71,7 @@ def application(environ, start_response):
 
 	# The getCities query returns a list of all available cities and their metadata
 	elif query == 'getCities':
-		output = str(settings.CITIES);
+		output = str(settings.CITIES).replace('\'', '"');
 
 	# The getCity query returns the level-0 tiles bounding boxes
 	elif query == 'getCity':

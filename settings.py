@@ -10,6 +10,7 @@ CITIES = {
 	"lyon": {
 		"tablename": "lyongeom",
 		"extent": [[1837816.94334,5170036.4587], [1847692.32501,5178412.82698]],
-		"maxtilesize": 2000
+		"maxtilesize": 2000,
+		"srs":"EPSG:3946"
 	}
 }
