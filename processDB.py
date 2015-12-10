@@ -50,7 +50,7 @@ def processDB(connection, extent, table, cursor, maxTileSize = 2000):
 				if inside(tileExtent, centroid):
 					geoms.append((r[0], centroid, r[2], p1, p2))
 			if len(geoms) == 0:
-				break
+				continue
 
 			coord = "{0}/{1}/{2}".format(0, j, i)
 			if len(geoms) > THRESHOLD:
@@ -135,10 +135,9 @@ def divide(extent, geometries, depth, xOffset, yOffset, tileSize, index, bboxInd
 				if inside(tileExtent, g[1]):
 					geoms.append(g)
 			if len(geoms) == 0:
-				break;
+				continue
 
 			coord = "{0}/{1}/{2}".format(depth, yOffset + j, xOffset + i)
-			index[coord] = geoms
 			if len(geoms) > THRESHOLD:
 				index[coord] = geoms[0:THRESHOLD]
 				bbox = divide(tileExtent, geoms[THRESHOLD:len(geoms)], depth + 1, (xOffset + i) * 2, (yOffset + j) * 2, tileSize / 2., index, bboxIndex)
