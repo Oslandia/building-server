@@ -8,7 +8,7 @@ import time
 import sys
 import settings
 
-THRESHOLD = 20
+THRESHOLD = 50
 
 def inside(box, point):
 	return box[0][0] <= point[0] < box[1][0] and box[0][1] <= point[1] < box[1][1]
@@ -32,8 +32,8 @@ def processDB(connection, extent, table, cursor, maxTileSize = 2000):
 			p2 = "{0} {1}".format(tileExtent[0][0], tileExtent[1][1])
 			p3 = "{0} {1}".format(tileExtent[1][0], tileExtent[1][1])
 			p4 = "{0} {1}".format(tileExtent[1][0], tileExtent[0][1])
-			scoreFunction = "ST_NPoints(geom)" # "ST_3DArea(geom)" #FIX : clean polyhedral surfaces before calling the function
-			query = "SELECT gid, Box2D(geom), {4} AS \"score\" FROM {5} WHERE (geom && 'POLYGON(({0}, {1}, {2}, {3}, {0}))'::geometry) ORDER BY score ASC".format(p1, p2, p3, p4, scoreFunction, table)
+			scoreFunction = "ST_Area(Box2D(geom))"#"ST_NPoints(geom)" # "ST_3DArea(geom)" #FIX : clean polyhedral surfaces before calling the function
+			query = "SELECT gid, Box2D(geom), {4} AS \"score\" FROM {5} WHERE (geom && 'POLYGON(({0}, {1}, {2}, {3}, {0}))'::geometry) ORDER BY score DESC".format(p1, p2, p3, p4, scoreFunction, table)
 			qt0 = time.time()
 			cursor.execute(query)
 			qt += time.time() - qt0
@@ -93,7 +93,7 @@ def processDB(connection, extent, table, cursor, maxTileSize = 2000):
 			cursor.execute(query)
 	print "Table update time : {0}".format(time.time() - t1)
 	t2 = time.time()
-	cursor.execute("CREATE INDEX tileIdx ON {0} (quadtile)".format(table))
+	cursor.execute("CREATE INDEX tileIdx_{0} ON {0} (quadtile)".format(table))
 	print "Index creation time : {0}".format(time.time() - t2)
 
 	# create bbox table
