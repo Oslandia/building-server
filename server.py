@@ -30,7 +30,7 @@ def application(environ, start_response):
 		cityTable = settings.CITIES[city]['tablename']
 
 		if outputFormat == "GeoJSON":
-			cursor.execute("select gid, ST_AsGeoJSON(ST_Transform(\"geom\"::geometry,3946),0, 1) AS \"geom\" from {0} where quadtile='{1}'".format(cityTable, tile))
+			cursor.execute("select gid, ST_AsGeoJSON(ST_Translate(geom,{2},{3},{4}), 2, 1) AS \"geom\" from {0} where quadtile='{1}'".format(cityTable, tile, -offset[0], -offset[1], -offset[2]))
 			rows = cursor.fetchall();
 			geoJSON = '{"type": "FeatureCollection", "crs":{"type":"name","properties":{"name":"EPSG:3946"}}, "features": ['
 			for r in rows:
