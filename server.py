@@ -97,19 +97,39 @@ def application(environ, start_response):
 		city = param['city']
 		cityTable = settings.CITIES[city]['tablename']
 		cursor.execute("select quadtile, bbox from {0}_bbox where substr(quadtile,1,1)='0'".format(cityTable))
-		rows = cursor.fetchall();
+		rows = cursor.fetchall()
 		output = '{"tiles":['
 		for r in rows:
 			output += '{"id":"' + r[0] + '","bbox":' + formatBbox2D(r[1]) + '},'
 		if len(rows) != 0:
 			output = output[0:len(output)-1]
 		output += "]}"
-		#output = "["
-		#for r in rows:
-	#		output += formatBbox2D(r[0]) + ","
-	#	if len(rows) != 0:
-	#		output = output[0:len(output)-1]
-	#	output += "]"
+
+	# The getAttribute query returns a list of attributes for the requested geometries
+	elif query == 'getAttribute':
+		city = param['city']
+		cityTable = settings.CITIES[city]['tablename']
+		gid = param['gid']
+		attributes = param['attribute']
+		gidList = gid.split(',')
+		attributeList = attributes.split(',')
+		condition = ""
+		for g in gidList:
+			condition += "gid=" + g + " or "
+		condition = condition[0:len(condition)-4]
+
+		cursor.execute("select {0} from {1} where {2}".format(attributes, cityTable, condition));
+		rows = cursor.fetchall()
+		output = '['
+		for i in range(0,len(gidList)):
+			output += '{'
+			for j in range(0,len(attributeList)):
+				output += '"' + attributeList[j] + '"' + ':' + str(rows[i][j]) + ','
+			output = output[0:len(output)-1]
+			output += '},'
+		output = output[0:len(output)-1]
+		output += ']'
+
 
 	return [output]
 
