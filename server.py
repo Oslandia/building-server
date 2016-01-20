@@ -29,12 +29,22 @@ def application(environ, start_response):
 		offset = compute_offset(tile, city)
 		cityTable = settings.CITIES[city]['tablename']
 
+		attributesStr = ''
+		attributes = []
+		if 'attributes' in param:
+			attributes = param['attributes'].split(',')
+			attributesStr = ',' + param['attributes']
+
 		if outputFormat == "GeoJSON":
-			cursor.execute("select gid, ST_AsGeoJSON(ST_Translate(geom,{2},{3},{4}), 2, 1) AS \"geom\" from {0} where quadtile='{1}'".format(cityTable, tile, -offset[0], -offset[1], -offset[2]))
+			cursor.execute("select gid, ST_AsGeoJSON(ST_Translate(geom,{2},{3},{4}), 2, 1){5} AS \"geom\" from {0} where quadtile='{1}'".format(
+				cityTable, tile, -offset[0], -offset[1], -offset[2], attributesStr))
 			rows = cursor.fetchall();
 			geoJSON = '{"type": "FeatureCollection", "crs":{"type":"name","properties":{"name":"EPSG:3946"}}, "features": ['
 			for r in rows:
-				geoJSON += '{{"type":"Feature", "id": "lyongeom.{0}", "properties":{{"gid": "{0}"}}, "geometry": {1}}}'.format(r[0], r[1])
+				attributesJSON = ''
+				for i in range(0,len(attributes)):
+					attributesJSON += ',"' + attributes[i] + '": ' + str(r[2+i])
+				geoJSON += '{{"type":"Feature", "id": "lyongeom.{0}", "properties":{{"gid": "{0}"{2}}}, "geometry": {1}}}'.format(r[0], r[1], attributesJSON)
 				geoJSON += ",\n"
 			if(len(rows) != 0): geoJSON = geoJSON[0:len(geoJSON)-2]
 			geoJSON += ']}'
