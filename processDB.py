@@ -256,15 +256,15 @@ def removeObject(cursor, city, gid):
 	# Remove feature from DB
 	cursor.execute("DELETE FROM {0} WHERE gid = {1}".format(table, gid))
 
-	removeObject_r(cursor, table, gid, quadtil)
+	removeObject_r(cursor, table, gid, quadtile, featuresPerTile)
 
-def removeObject_r(cursor, table, gid, quadtile):
+def removeObject_r(cursor, table, gid, quadtile, featuresPerTile):
 	[z,y,x] = map(int, quadtile.split('/'))	# tile coordinates
 	# Check if tile is empty
-	cursor.execute("SELECT count(*) FROM {0} WHERE quadtile = {1}".format(table, quadtile))
+	cursor.execute("SELECT count(*) FROM {0} WHERE quadtile = '{1}'".format(table, quadtile))
 	n = cursor.fetchone()[0]
 	if n == 0:	# Tile empty: delete tile
-		cursor.execute("DELETE FROM {0}_bbox WHERE quadtile = {1}".format(table, quadtile))
+		cursor.execute("DELETE FROM {0}_bbox WHERE quadtile = '{1}'".format(table, quadtile))
 		return
 	if n + 1 < featuresPerTile:	# no children
 		return
@@ -280,21 +280,21 @@ def removeObject_r(cursor, table, gid, quadtile):
 	maxQuadtile = ''
 	for child in children:
 		cursor.execute("SELECT gid, weight FROM {0} WHERE quadtile = '{1}' ORDER BY weight DESC".format(table, child))
-		(g, w) = cursor.fetchone()
-		if w > maxWeight:
-			maxWeight = w
-			maxGid = g
-			maxQuadtile = child
+		if cursor.rowcount != 0:
+			(g, w) = cursor.fetchone()
+			if w > maxWeight:
+				maxWeight = w
+				maxGid = g
+				maxQuadtile = child
 
 	if maxGid == -1:	# no children
 		return
 
 	# Add highest weight feature to quadtile
-	cursor.execute("UPDATE {0} SET quadtile = '{1}' WHERE gid = {2}".format(table, quadtile, gid))
+	cursor.execute("UPDATE {0} SET quadtile = '{1}' WHERE gid = {2}".format(table, quadtile, maxGid))
 
 	# Recursive call on child quadtile to balance it
-	removeObject_r(cursor, table, maxGid, maxQuadtile)
-
+	removeObject_r(cursor, table, maxGid, maxQuadtile, featuresPerTile)
 
 
 if __name__ == '__main__':
