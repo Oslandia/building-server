@@ -204,6 +204,7 @@ def addObject_r(cursor, table, gid, weight, centroid, quadtile, extent, tileSize
 		cursor.execute("UPDATE {0} SET quadtile = '{1}' WHERE gid = {2}".format(table, quadtile, gid))
 		if n == 0:	# Create new bbox entry
 			cursor.execute("INSERT INTO {0}_bbox VALUES ('{1}', (SELECT Box2D(geom) FROM {0} WHERE gid = {2}))".format(table, quadtile, gid))
+		updateBoundingBox(cursor, table, quadtile)
 		return
 
 	# Check if lowest weight feature is above new feature's weight
@@ -265,8 +266,15 @@ def removeObject_r(cursor, table, gid, quadtile, featuresPerTile):
 	n = cursor.fetchone()[0]
 	if n == 0:	# Tile empty: delete tile
 		cursor.execute("DELETE FROM {0}_bbox WHERE quadtile = '{1}'".format(table, quadtile))
+		if z != 0:
+			z = z -1
+			y = math.floor(y / 2)
+			x = math.floor(x / 2)
+			quadtile = "{0:.0f}/{1:.0f}/{2:.0f}".format(z,y,x)
+			updateBoundingBox(cursor, table, quadtile)	# update bbox is still needed for parent bboxes
 		return
 	if n + 1 < featuresPerTile:	# no children
+		updateBoundingBox(cursor, table, quadtile)
 		return
 
 	# Search child quadtiles for highest weight feature
@@ -288,6 +296,7 @@ def removeObject_r(cursor, table, gid, quadtile, featuresPerTile):
 				maxQuadtile = child
 
 	if maxGid == -1:	# no children
+		updateBoundingBox(cursor, table, quadtile)
 		return
 
 	# Add highest weight feature to quadtile
@@ -295,6 +304,54 @@ def removeObject_r(cursor, table, gid, quadtile, featuresPerTile):
 
 	# Recursive call on child quadtile to balance it
 	removeObject_r(cursor, table, maxGid, maxQuadtile, featuresPerTile)
+
+# This functions assumes that the children bounding boxes are accurate
+def updateBoundingBox(cursor, table, quadtile):
+	[z,y,x] = map(int, quadtile.split('/'))	# tile coordinates
+
+	pMin = [float("inf"),float("inf")]
+	pMax = [-float("inf"),-float("inf")]
+	children = [ 
+		str(z+1) + "/" + str(2*y) + "/" + str(2*x),
+		str(z+1) + "/" + str(2*y+1) + "/" + str(2*x),
+		str(z+1) + "/" + str(2*y) + "/" + str(2*x+1),
+		str(z+1) + "/" + str(2*y+1) + "/" + str(2*x+1) ]
+	condition = "quadtile = '" + children[0] + "' or quadtile = '" + children[1] + "' or quadtile = '" + children[2] + "' or quadtile = '" + children[3] + "'"
+	cursor.execute("SELECT bbox FROM {0}_bbox WHERE {1}".format(table, condition))
+	for t in cursor.fetchall():
+		box2D = t[0]
+		box2D = box2D[4:len(box2D)-1]	# remove "BOX(" and ")"
+		part = box2D.partition(',')
+		p1 = part[0].partition(' ')
+		p2 = part[2].partition(' ')
+		p1 = [float(p1[0]), float(p1[2])]
+		p2 = [float(p2[0]), float(p2[2])]
+		pMin = [min(pMin[0], p1[0]), min(pMin[1], p1[1])]
+		pMax = [max(pMax[0], p2[0]), max(pMax[1], p2[1])]
+
+	cursor.execute("SELECT ST_EXTENT(geom) FROM {0} WHERE quadtile = '{1}'".format(table, quadtile))
+	box2D = cursor.fetchone()[0]
+	box2D = box2D[4:len(box2D)-1]	# remove "BOX(" and ")"
+	part = box2D.partition(',')
+	p1 = part[0].partition(' ')
+	p2 = part[2].partition(' ')
+	p1 = [float(p1[0]), float(p1[2])]
+	p2 = [float(p2[0]), float(p2[2])]
+	pMin = [min(pMin[0], p1[0]), min(pMin[1], p1[1])]
+	pMax = [max(pMax[0], p2[0]), max(pMax[1], p2[1])]
+	bbox_str = str(pMin[0]) + " " + str(pMin[1]) + "," + str(pMax[0]) + " " + str(pMax[1])
+	cursor.execute("UPDATE {0}_bbox SET bbox = Box2D(ST_GeomFromText('LINESTRING({1})')) WHERE quadtile = '{2}'".format(table, bbox_str, quadtile)) # a simpler query probabliy exists
+
+	# Recursion
+	if z == 0:	# No parent
+		return
+
+	# Parent tile
+	z = z - 1
+	y = math.floor(y / 2)
+	x = math.floor(x / 2)
+	quadtile = "{0:.0f}/{1:.0f}/{2:.0f}".format(z,y,x)
+	updateBoundingBox(cursor, table, quadtile)
 
 
 if __name__ == '__main__':
