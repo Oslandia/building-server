@@ -26,8 +26,8 @@ def application(environ, start_response):
 		city = param['city']
 		tile = param['tile']
 		outputFormat = param['format']
-		offset = compute_offset(tile, city)
 		cityTable = settings.CITIES[city]['tablename']
+		offset = compute_offset(cursor, tile, cityTable)
 
 		attributesStr = ''
 		attributes = []
@@ -152,8 +152,10 @@ def connect_db():
 	cursor = conn.cursor()
 	return cursor, conn
 
-def compute_offset(tile, city):
-	[z,y,x] = map(int, tile.split('/'))	# tile coordinates
-	[minX, minY] = settings.CITIES[city]['extent'][0]
-	tileSize = settings.CITIES[city]['maxtilesize'] / (2 ** z)
-	return [minX + x * tileSize, minY + y * tileSize, 0]
+def compute_offset(cursor, tile, table):
+	cursor.execute("SELECT bbox from {0}_bbox WHERE quadtile = '{1}'".format(table, tile))
+	box2D = cursor.fetchone()[0]
+	box2D = box2D[4:len(box2D)-1]	# remove "BOX(" and ")"
+	part = box2D.partition(',')
+	p = part[0].partition(' ')
+	return [float(p[0]), float(p[2]), 0]
