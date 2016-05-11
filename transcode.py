@@ -304,7 +304,7 @@ def triangulate(polygon):
 	triangulation = triangle.triangulate({'vertices': polygon2D, 'segments': segments})
 	if 'triangles' not in triangulation:	# if polygon is degenerate
 		return []
-	trianglesIdx = triangle.triangulate({'vertices': polygon2D, 'segments': segments})['triangles'];
+	trianglesIdx = triangulation['triangles'];
 	triangles = [];
 
 	for t in trianglesIdx:

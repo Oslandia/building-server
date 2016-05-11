@@ -62,7 +62,7 @@ def application(environ, start_response):
 
 			output = '{"geometries":' + geoJSON + ',"tiles":['
 			for r in rows:
-				output += '{"id":"' + r[0] + '","bbox":' + formatBbox2D(r[1]) + '},'
+				output += '{"id":"' + r[0] + '","bbox":' + formatBbox3D(r[1]) + '},'
 			if len(rows) != 0:
 				output = output[0:len(output)-1]
 			output += "]}"
@@ -90,7 +90,7 @@ def application(environ, start_response):
 				rows = cursor.fetchall()
 				output += '{"tiles":['
 				for r in rows:
-					output += '{"id":"' + r[0] + '","bbox":' + formatBbox2D(r[1]) + '},'
+					output += '{"id":"' + r[0] + '","bbox":' + formatBbox3D(r[1]) + '},'
 				if len(rows) != 0:
 					output = output[0:len(output)-1]
 				output += "]}"
@@ -110,7 +110,7 @@ def application(environ, start_response):
 		rows = cursor.fetchall()
 		output = '{"tiles":['
 		for r in rows:
-			output += '{"id":"' + r[0] + '","bbox":' + formatBbox2D(r[1]) + '},'
+			output += '{"id":"' + r[0] + '","bbox":' + formatBbox3D(r[1]) + '},'
 		if len(rows) != 0:
 			output = output[0:len(output)-1]
 		output += "]}"
@@ -146,6 +146,9 @@ def application(environ, start_response):
 def formatBbox2D(string):
 	return "[" + string[4:len(string)-1].replace(" ", ",") + "]"
 
+def formatBbox3D(string):
+	return "[" + string[6:len(string)-1].replace(" ", ",") + "]"
+
 def connect_db():
 	conn_string = "host='%s' dbname='%s' user='%s' password='%s' port='%s'" % (settings.DB_INFOS['host'], settings.DB_INFOS['dbname'], settings.DB_INFOS['user'], settings.DB_INFOS['password'], settings.DB_INFOS['port'])
 	conn = psycopg2.connect(conn_string)
@@ -154,8 +157,8 @@ def connect_db():
 
 def compute_offset(cursor, tile, table):
 	cursor.execute("SELECT bbox from {0}_bbox WHERE quadtile = '{1}'".format(table, tile))
-	box2D = cursor.fetchone()[0]
-	box2D = box2D[4:len(box2D)-1]	# remove "BOX(" and ")"
-	part = box2D.partition(',')
-	p = part[0].partition(' ')
-	return [float(p[0]), float(p[2]), 0]
+	box3D = cursor.fetchone()[0]
+	box3D = box3D[6:len(box3D)-1]	# remove "BOX(" and ")"
+	part = box3D.split(',')
+	p = part[0].split(' ')
+	return [float(p[0]), float(p[1]), float(p[2])]
