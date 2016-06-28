@@ -43,7 +43,10 @@ def application(environ, start_response):
 			for r in rows:
 				attributesJSON = ''
 				for i in range(0,len(attributes)):
-					attributesJSON += ',"' + attributes[i] + '": ' + str(r[2+i])
+					val = str(r[2+i])
+					if not val.isdigit():
+						val = '"' + val + '"'
+					attributesJSON += ',"' + attributes[i] + '": ' + val
 				geoJSON += '{{"type":"Feature", "id": "lyongeom.{0}", "properties":{{"gid": "{0}"{2}}}, "geometry": {1}}}'.format(r[0], r[1], attributesJSON)
 				geoJSON += ",\n"
 			if(len(rows) != 0): geoJSON = geoJSON[0:len(geoJSON)-2]
