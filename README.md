@@ -15,7 +15,7 @@ dependencies:
     - triangle
     - psycopg2
 
-pip install .
+    pip install .
 
 ## Configuration
 
@@ -31,5 +31,5 @@ Modify the settings.py file to match your postgres configuration.
 
 ## test
 
-    http://localhost:9090/?query=getCities&city=montreal&tile=1/4/2&format=GeoJSON
+    http://localhost:9090/?query=getCities
     http://localhost:9090/?query=getGeometry&city=montreal&tile=1/4/2&format=GeoJSON
