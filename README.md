@@ -8,36 +8,28 @@ This is a prototype for a simple WFS server that retrieves polyhedral surfaces f
 
 The server uses python 2.
 
-Install the necessary modules :
-```
-easy_install cython
-easy_install numpy
-easy_install triangle
-sudo apt-get install python-psycopg2
-```
+dependencies:
 
-### Apache configuration
+    - cython
+    - numpy
+    - triangle
+    - psycopg2
 
-Install the apache wsgi module :
-```
-sudo apt-get install libapache2-mod-wsgi
-```
-
-In the apache site configuration file add the following lines :
-
-```
-WSGIPythonPath /*path_to_building_server*/
-```
-
-```
-WSGIScriptAlias /server /*path_to_building_server*/server.py
-
-<Directory /*path_to_building_server*/>
-	Order allow,deny
-	Allow from all
-</Directory>
-```
+pip install .
 
 ## Configuration
 
 Modify the settings.py file to match your postgres configuration.
+
+## Generating the quadtree and the tile association
+
+    python processDB.py
+
+## launch the server with uwsgi
+
+    uwsgi --http :9090 --wsgi-file server.py
+
+## test
+
+    http://localhost:9090/?query=getCities&city=montreal&tile=1/4/2&format=GeoJSON
+    http://localhost:9090/?query=getGeometry&city=montreal&tile=1/4/2&format=GeoJSON
