@@ -38,8 +38,8 @@ def find_version(*file_paths):
 
 
 setup(
-    name='building-server',
-    version=find_version('building-server', '__init__.py'),
+    name='building_server',
+    version=find_version('building_server', '__init__.py'),
     description="Light OpenSource PointCloud Server",
     url='https://github.com/Oslandia/building-server',
     author='dev',
