@@ -9,6 +9,7 @@ from building_server import transcode
 
 
 def application(environ, start_response):
+    print("APPLICATION!!!!!!!!!!!!!!!!")
     status = "200 OK"
     response_header = [("Content-type", "application/json")]  # may need to change later
     start_response(status, response_header)
@@ -17,6 +18,8 @@ def application(environ, start_response):
 
     param = dict(urlparse.parse_qsl(environ['QUERY_STRING']))
 
+    print(environ)
+    print(param)
     query = param['query']
 
     output = ""
@@ -164,7 +167,9 @@ def connect_db():
     return cursor, conn
 
 def compute_offset(cursor, tile, table):
-    cursor.execute("SELECT bbox from {0}_bbox WHERE quadtile = '{1}'".format(table, tile))
+    sql = "SELECT bbox from {0}_bbox WHERE quadtile = '{1}'".format(table, tile)
+    print sql
+    cursor.execute(sql)
     box3D = cursor.fetchone()[0]
     box3D = box3D[6:len(box3D)-1]   # remove "BOX(" and ")"
     part = box3D.split(',')

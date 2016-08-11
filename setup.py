@@ -11,7 +11,10 @@ requirements = (
     'cython',
     'numpy',
     'triangle',
-    'psycopg2'
+    'psycopg2',
+    'flask',
+    'flask-restplus',
+    'pyyaml'
 )
 
 prod_requirements = (

@@ -1,0 +1,16 @@
+uwsgi:
+    virtualenv: /home/oslandia/building-server/venv
+    master: true
+    uid: oslandia
+    gid: oslandia
+    socket: /tmp/building-server.sock
+    chmod-socket: 666
+    module: building_server.wsgi:app
+    processes: 5
+    enable-threads: true
+    protocol: uwsgi
+    need-app: true
+    catch-exceptions: true
+    log-maxsize: 10000000
+    logto2: /var/log/oslandia/building-server.log
+    env: BUILDING_SETTINGS=/home/oslandia/building-server/conf/building.yml

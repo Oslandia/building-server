@@ -1,0 +1,8 @@
+flask:
+  DEBUG: True
+  LOG_LEVEL: debug
+  PG_HOST: localhost
+  PG_NAME: gml
+  PG_PORT: 5432
+  PG_USER: blottiere
+  PG_PASSWORD:

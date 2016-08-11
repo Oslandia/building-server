@@ -17,7 +17,7 @@ def toglTF(rows, bgltf = False, origin = [0,0,0]):
         triangles = []
         for poly in mp:
             if(len(poly) != 1):
-                print "No support for inner polygon rings"
+                print("No support for inner polygon rings")
             else:
                 if(len(poly[0]) > 3):
                     triangles.extend(triangulate(poly[0]))

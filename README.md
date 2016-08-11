@@ -14,6 +14,9 @@ dependencies:
     - numpy
     - triangle
     - psycopg2
+    - flask
+    - flask-restplus
+    - pyyaml
 
     pip install .
 
