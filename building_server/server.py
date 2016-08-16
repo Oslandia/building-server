@@ -119,3 +119,23 @@ class GetCities(object):
 
     def run(self):
         return str(settings.CITIES).replace('\'', '"')
+
+
+class GetCity(object):
+
+    def run(self, args):
+        city = args['city']
+        tiles = Session.tiles_for_level(city, 0)
+
+        json = ""
+        for tile in tiles:
+            b = utils.Box3D(tile['bbox'])
+            tilejson = ('{{"id" : "{0}", {1} }}'
+                        .format(tile['quadtile'], b.geojson()))
+            if json:
+                json = "{0}, {1}".format(json, tilejson)
+            else:
+                json = tilejson
+        json = '{{"tiles":[{0}]}}'.format(json)
+
+        return json

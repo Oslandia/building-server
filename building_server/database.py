@@ -147,6 +147,26 @@ class Session():
         return cls.query_asdict(sql)
 
     @classmethod
+    def tiles_for_level(cls, city, level):
+        """Returns tiles for the specific level
+
+        Parameters
+        ----------
+        city : str
+        level : int
+
+        Returns
+        -------
+        res : list
+            List of OrderedDict with 'quadtile' and 'bbox' as keys
+        """
+
+        sql = ("SELECT quadtile, bbox FROM {0}_bbox"
+               " WHERE substr(quadtile,1,1)='{1}'"
+               .format(city, level))
+        return cls.query_asdict(sql)
+
+    @classmethod
     def query(cls, query, parameters=None):
         """Performs a query and yield results
         """

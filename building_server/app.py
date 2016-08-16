@@ -4,6 +4,7 @@ from flask_restplus import Api, Resource, fields, reqparse
 
 from .server import GetGeometry
 from .server import GetCities
+from .server import GetCity
 
 api = Api(
         version='0.1', title='Building Server API',
@@ -29,17 +30,33 @@ getgeom_parser.add_argument('tile', type=str, required=True)
 getgeom_parser.add_argument('format', type=str, required=False)
 getgeom_parser.add_argument('attributes', type=str, required=False)
 
+
 @api.route("/getGeometry")
-class Read(Resource):
+class APIGetGeometry(Resource):
 
     @api.expect(getgeom_parser, validate=True)
     def get(self):
         args = getgeom_parser.parse_args()
         return GetGeometry().run(args)
 
+
 # getCities
 @api.route("/getCities")
-class Read(Resource):
+class APIGetCities(Resource):
 
     def get(self):
         return GetCities().run()
+
+
+# getCity
+getcity_parser = reqparse.RequestParser()
+getcity_parser.add_argument('city', type=str, required=True)
+
+
+@api.route("/getCity")
+class APIGetCity(Resource):
+
+    @api.expect(getcity_parser, validate=True)
+    def get(self):
+        args = getcity_parser.parse_args()
+        return GetCity().run(args)
