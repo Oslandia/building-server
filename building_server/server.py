@@ -1,177 +1,114 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-import psycopg2
-import urlparse
+
 import struct
+from . import utils
+from .database import Session
+from .transcode import toglTF
 
-from building_server import settings
-from building_server import transcode
 
+class GetGeometry(object):
 
-def application(environ, start_response):
-    print("APPLICATION!!!!!!!!!!!!!!!!")
-    status = "200 OK"
-    response_header = [("Content-type", "application/json")]  # may need to change later
-    start_response(status, response_header)
+    def run(self, args):
+        outputFormat = args['format']
 
-    cursor, connection = connect_db()
-
-    param = dict(urlparse.parse_qsl(environ['QUERY_STRING']))
-
-    print(environ)
-    print(param)
-    query = param['query']
-
-    output = ""
-
-    # The getGeometry query returns the geometries contained in a tile and the bounding boxes of the children tiles
-    if query == 'getGeometry':
-        city = param['city']
-        tile = param['tile']
-        outputFormat = param['format']
-        cityTable = settings.CITIES[city]['tablename']
-        offset = compute_offset(cursor, tile, cityTable)
-
-        attributesStr = ''
-        attributes = []
-        if 'attributes' in param:
-            attributes = param['attributes'].split(',')
-            attributesStr = ',' + param['attributes']
-
-        if outputFormat == "GeoJSON":
-            cursor.execute("select gid, ST_AsGeoJSON(ST_Translate(geom,{2},{3},{4}), 2, 1){5} AS \"geom\" from {0} where quadtile='{1}'".format(
-                cityTable, tile, -offset[0], -offset[1], -offset[2], attributesStr))
-            rows = cursor.fetchall()
-            geoJSON = '{"type": "FeatureCollection", "crs":{"type":"name","properties":{"name":"EPSG:3946"}}, "features": ['
-            for r in rows:
-                attributesJSON = ''
-                for i in range(0,len(attributes)):
-                    val = str(r[2+i])
-                    if not val.isdigit():
-                        val = '"' + val + '"'
-                    attributesJSON += ',"' + attributes[i] + '": ' + val
-                geoJSON += '{{"type":"Feature", "id": "lyongeom.{0}", "properties":{{"gid": "{0}"{2}}}, "geometry": {1}}}'.format(r[0], r[1], attributesJSON)
-                geoJSON += ",\n"
-            if(len(rows) != 0): geoJSON = geoJSON[0:len(geoJSON)-2]
-            geoJSON += ']}'
-
-            # children bboxes
-            [z,y,x] = tile.split("/")
-            z = int(z)
-            y = int(y)
-            x = int(x)
-            condition = "quadtile='{0}' or quadtile='{1}' or quadtile='{2}' or quadtile='{3}'".format(
-                str(z+1) + "/" + str(2*y) + "/" + str(2*x),
-                str(z+1) + "/" + str(2*y+1) + "/" + str(2*x),
-                str(z+1) + "/" + str(2*y) + "/" + str(2*x+1),
-                str(z+1) + "/" + str(2*y+1) + "/" + str(2*x+1))
-            cursor.execute("select quadtile, bbox from {0}_bbox where {1}".format(cityTable,condition))
-            rows = cursor.fetchall()
-
-            output = '{"geometries":' + geoJSON + ',"tiles":['
-            for r in rows:
-                output += '{"id":"' + r[0] + '","bbox":' + formatBbox3D(r[1]) + '},'
-            if len(rows) != 0:
-                output = output[0:len(output)-1]
-            output += "]}"
-
-        else:
-            # geometries
-            cursor.execute("select ST_AsBinary(geom), Box3D(geom) from {0} where quadtile='{1}'".format(cityTable, tile))
-            rows = cursor.fetchall()
-            if len(rows) == 0:
-                output = struct.pack('4sIIII', "glTF", 1, 20, 0, 0) # empty bglTF
-                output += '{"tiles":[]}'
+        geometry = ""
+        if outputFormat:
+            if outputFormat.lower() == "geojson":
+                geometry = self._as_geojson(args)
             else:
-                bglTF = transcode.toglTF(rows, True, offset)
-                output = bglTF
+                geometry = self._as_binary(args)
+        else:
+            geometry = self._as_binary(args)
 
-                # children bboxes
-                z, y, x = tile.split("/")
-                z = int(z)
-                y = int(y)
-                x = int(x)
+        return geometry
 
-                condition = "quadtile='{0}' or quadtile='{1}' or quadtile='{2}' or quadtile='{3}'".format(
-                    str(z+1) + "/" + str(2*y) + "/" + str(2*x),
-                    str(z+1) + "/" + str(2*y+1) + "/" + str(2*x),
-                    str(z+1) + "/" + str(2*y) + "/" + str(2*x+1),
-                    str(z+1) + "/" + str(2*y+1) + "/" + str(2*x+1))
-                cursor.execute("select quadtile, bbox from {0}_bbox where {1}".format(cityTable,condition))
-                rows = cursor.fetchall()
-                output += '{"tiles":['
-                for r in rows:
-                    output += '{"id":"' + r[0] + '","bbox":' + formatBbox3D(r[1]) + '},'
-                if len(rows) != 0:
-                    output = output[0:len(output)-1]
-                output += "]}"
+    def _as_geojson(self, args):
 
-        cursor.close()
-        connection.close()
+        # arguments
+        city = args['city']
+        tile = args['tile']
+        attributes = []
+        if args['attributes']:
+            attributes = args['attributes'].split(',')
 
-    # The getCities query returns a list of all available cities and their metadata
-    elif query == 'getCities':
-        output = str(settings.CITIES).replace('\'', '"')
+        # get offset in database
+        offset = Session.offset(city, tile)
 
-    # The getCity query returns the level-0 tiles bounding boxes
-    elif query == 'getCity':
-        city = param['city']
-        cityTable = settings.CITIES[city]['tablename']
-        cursor.execute("select quadtile, bbox from {0}_bbox where substr(quadtile,1,1)='0'".format(cityTable))
-        rows = cursor.fetchall()
-        output = '{"tiles":['
-        for r in rows:
-            output += '{"id":"' + r[0] + '","bbox":' + formatBbox3D(r[1]) + '},'
-        if len(rows) != 0:
-            output = output[0:len(output)-1]
-        output += "]}"
+        # get geometries for a specific tile in database
+        geomsjson = Session.tile_geom_geojson(city, offset, tile)
 
-    # The getAttribute query returns a list of attributes for the requested geometries
-    elif query == 'getAttribute':
-        city = param['city']
-        cityTable = settings.CITIES[city]['tablename']
-        gid = param['gid']
-        attributes = param['attribute']
-        gidList = gid.split(',')
-        attributeList = attributes.split(',')
-        condition = ""
-        for g in gidList:
-            condition += "gid=" + g + " or "
-        condition = condition[0:len(condition)-4]
+        # build a features collection with extra properties if necessary
+        feature_collection = utils.FeatureCollection()
 
-        cursor.execute("select {0} from {1} where {2}".format(attributes, cityTable, condition))
-        rows = cursor.fetchall()
-        output = '['
-        for i in range(0,len(gidList)):
-            output += '{'
-            for j in range(0,len(attributeList)):
-                output += '"' + attributeList[j] + '"' + ':' + str(rows[i][j]) + ','
-            output = output[0:len(output)-1]
-            output += '},'
-        output = output[0:len(output)-1]
-        output += ']'
+        for geom in geomsjson:
+            properties = utils.PropertyCollection()
+            property = utils.Property('gid', geom['gid'])
+            properties.add(property)
 
+            for attribute in attributes:
+                val = Session.attribute_for_gid(city, geom['gid'], attribute)
+                property = utils.Property(attribute, val)
+                properties.add(property)
 
-    return [output]
+            f = utils.Feature(geom['gid'], properties, geom['geom'])
+            feature_collection.add(f)
 
-def formatBbox2D(string):
-    return "[" + string[4:len(string)-1].replace(" ", ",") + "]"
+        # build children bboxes
+        bboxes_str = self._children_bboxes(city, tile)
 
-def formatBbox3D(string):
-    return "[" + string[6:len(string)-1].replace(" ", ",") + "]"
+        # build the resulting json
+        json = ('{{"geometries":{0}, "tiles":[{1}]}}'
+                .format(feature_collection.geojson(), bboxes_str))
 
-def connect_db():
-    conn_string = "host='%s' dbname='%s' user='%s' password='%s' port='%s'" % (settings.DB_INFOS['host'], settings.DB_INFOS['dbname'], settings.DB_INFOS['user'], settings.DB_INFOS['password'], settings.DB_INFOS['port'])
-    conn = psycopg2.connect(conn_string)
-    cursor = conn.cursor()
-    return cursor, conn
+        return json
 
-def compute_offset(cursor, tile, table):
-    sql = "SELECT bbox from {0}_bbox WHERE quadtile = '{1}'".format(table, tile)
-    print sql
-    cursor.execute(sql)
-    box3D = cursor.fetchone()[0]
-    box3D = box3D[6:len(box3D)-1]   # remove "BOX(" and ")"
-    part = box3D.split(',')
-    p = part[0].split(' ')
-    return [float(p[0]), float(p[1]), float(p[2])]
+    def _as_binary(self, args):
+        # retrieve arguments
+        city = args['city']
+        tile = args['tile']
+
+        # get geom as binary
+        geombin = Session.tile_geom_binary(city, tile)
+
+        json = ""
+        if not geombin:
+            json = struct.pack('4sIIII', "glTF", 1, 20, 0, 0)  # empty bglTF
+            json += '{"tiles":[]}'
+        else:
+            offset = Session.offset(city, tile)
+
+            # prepare data for toglTF function and run it
+            data = []
+            for geom in geombin:
+                data.append((geom['binary'], geom['box3d']))
+            json = toglTF(data, True, offset)
+
+            # build children bboxes
+            bboxes_str = self._children_bboxes(city, tile)
+
+            # build the resulting json
+            json = ('{0}, "tiles":[{1}]}}'
+                    .format(json, bboxes_str))
+
+        return json
+
+    def _children_bboxes(self, city, tile):
+
+        [z, y, x] = map(int, tile.split("/"))
+        q0 = str(z+1) + "/" + str(2*y) + "/" + str(2*x)
+        q1 = str(z+1) + "/" + str(2*y+1) + "/" + str(2*x)
+        q2 = str(z+1) + "/" + str(2*y) + "/" + str(2*x+1)
+        q3 = str(z+1) + "/" + str(2*y+1) + "/" + str(2*x+1)
+
+        bboxs = Session.bbox_for_quadtiles(city, [q0, q1, q2, q3])
+        lbb = []
+        for bbox in bboxs:
+            b = utils.Box3D(bbox['bbox'])
+            qstr = ('{{"id" : "{0}", {1}}}'
+                    .format(bbox['quadtile'], b.geojson()))
+            lbb.append(qstr)
+
+        bboxes_str = ', '.join(lbb)
+
+        return bboxes_str

@@ -30,8 +30,8 @@ def toglTF(rows, bgltf = False, origin = [0,0,0]):
 
         box3D = rows[i][1][6:len(rows[i][1])-1] # remove "BOX3D(" and ")"
         part = box3D.partition(',')
-        p1 = map(float,part[0].split(' '))
-        p2 = map(float,part[2].split(' '))
+        p1 = list(map(float,part[0].split(' ')))
+        p2 = list(map(float,part[2].split(' ')))
         for i in range(0,3):
             p1[i] -= origin[i]
             p2[i] -= origin[i]
@@ -46,10 +46,10 @@ def toglTF(rows, bgltf = False, origin = [0,0,0]):
     nIndices = []
     for i in range(0,len(nodes)):
         ptsIdx = indexation(nodes[i], normals[i])
-        packedVertices = ''.join(ptsIdx[0])
+        packedVertices = b''.join(ptsIdx[0])
         binVertices.append(packedVertices)
         binIndices.append(struct.pack('H'*len(ptsIdx[2]), *ptsIdx[2]))
-        binNormals.append(''.join(ptsIdx[1]))
+        binNormals.append(b''.join(ptsIdx[1]))
         nVertices.append(len(ptsIdx[0]))
         nIndices.append(len(ptsIdx[2]))
 
@@ -64,15 +64,15 @@ def toglTF(rows, bgltf = False, origin = [0,0,0]):
 def outputbglTF(binVertices, binIndices, binNormals, nVertices, nIndices, bb):
     scene = outputJSON(binVertices, binIndices, binNormals, nVertices, nIndices, bb, True)
 
-    scene = struct.pack(str(len(scene)) + 's', scene)
+    scene = struct.pack(str(len(scene)) + 's', scene.encode('utf8'))
     # body must be 4-byte aligned
     trailing = len(scene) % 4
     if trailing != 0:
-        scene = scene + struct.pack(str(trailing) + 's', ' ' * trailing)
+        scene = scene + struct.pack(str(trailing) + 's', b' ' * trailing)
 
     body = outputBin(binVertices, binIndices, binNormals)
 
-    header = struct.pack('4s', "glTF") + \
+    header = struct.pack('4s', "glTF".encode('utf8')) + \
                 struct.pack('I', 1) + \
                 struct.pack('I', 20 + len(body) + len(scene)) + \
                 struct.pack('I', len(scene)) + \
@@ -81,9 +81,9 @@ def outputbglTF(binVertices, binIndices, binNormals, nVertices, nIndices, bb):
     return header + scene + body
 
 def outputBin(binVertices, binIndices, binNormals):
-    binary = ''.join(binVertices)
-    binary = binary + ''.join(binNormals)
-    binary = binary + ''.join(binIndices)
+    binary = b''.join(binVertices)
+    binary = binary + b''.join(binNormals)
+    binary = binary + b''.join(binIndices)
     return binary
 
 def outputJSON(binVertices, binIndices, binNormals, nVertices, nIndices, bb, bgltf, uri = "data:,"):
@@ -285,7 +285,7 @@ def triangulate(polygon):
                 vect1[2] * vect2[0] - vect1[0] * vect2[2],
                 vect1[0] * vect2[1] - vect1[1] * vect2[0]]
     polygon2D = []
-    segments = range(len(polygon))
+    segments = list(range(len(polygon)))
     segments.append(0)
     # triangulation of the polygon projected on planes (xy) (zx) or (yz)
     if(math.fabs(vectProd[0]) > math.fabs(vectProd[1]) and math.fabs(vectProd[0]) > math.fabs(vectProd[2])):
