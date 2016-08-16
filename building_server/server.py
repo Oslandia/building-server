@@ -3,6 +3,7 @@
 
 import struct
 from . import utils
+from . import settings
 from .database import Session
 from .transcode import toglTF
 
@@ -112,3 +113,9 @@ class GetGeometry(object):
         bboxes_str = ', '.join(lbb)
 
         return bboxes_str
+
+
+class GetCities(object):
+
+    def run(self):
+        return str(settings.CITIES).replace('\'', '"')

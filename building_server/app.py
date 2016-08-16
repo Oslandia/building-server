@@ -3,6 +3,7 @@ from flask import request
 from flask_restplus import Api, Resource, fields, reqparse
 
 from .server import GetGeometry
+from .server import GetCities
 
 api = Api(
         version='0.1', title='Building Server API',
@@ -35,3 +36,10 @@ class Read(Resource):
     def get(self):
         args = getgeom_parser.parse_args()
         return GetGeometry().run(args)
+
+# getCities
+@api.route("/getCities")
+class Read(Resource):
+
+    def get(self):
+        return GetCities().run()
