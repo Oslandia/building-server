@@ -59,8 +59,9 @@ class GetGeometry(object):
         bboxes_str = self._children_bboxes(city, tile)
 
         # build the resulting json
-        json = ('{{"geometries":{0}, "tiles":[{1}]}}'
-                .format(feature_collection.geojson(), bboxes_str))
+        geometries = utils.Property("geometries", feature_collection.geojson())
+        json = ('{{ {0}, "tiles":[{1}]}}'
+                .format(geometries.geomsjson(), bboxes_str))
 
         return json
 
@@ -130,12 +131,42 @@ class GetCity(object):
         json = ""
         for tile in tiles:
             b = utils.Box3D(tile['bbox'])
-            tilejson = ('{{"id" : "{0}", {1} }}'
-                        .format(tile['quadtile'], b.geojson()))
+            p = utils.Property("id", tile['quadtile'])
+
+            tilejson = ('{{ {0}, {1} }}'
+                        .format(p.geojson(), b.geojson()))
             if json:
                 json = "{0}, {1}".format(json, tilejson)
             else:
                 json = tilejson
         json = '{{"tiles":[{0}]}}'.format(json)
 
+        return json
+
+
+class GetAttribute(object):
+
+    def run(self, args):
+        city = args['city']
+        gids = args['gid'].split(',')
+        attributes = args['attributes'].split(',')
+
+        json = ""
+        for gid in gids:
+            gidjson = ""
+            for attribute in attributes:
+                val = Session.attribute_for_gid(city, gid, attribute)
+                property = utils.Property(attribute, val)
+                if gidjson:
+                    gidjson = "{0}, {1}".format(gidjson, property.geojson())
+                else:
+                    gidjson = property.geojson()
+            gidjson = "{{ {0} }}".format(gidjson)
+
+            if json:
+                json = "{0}, {1}".format(json, gidjson)
+            else:
+                json = gidjson
+
+        json = "[{0}]".format(json)
         return json

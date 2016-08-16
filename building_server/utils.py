@@ -11,7 +11,8 @@ class Box3D(object):
         return "[" + self.str[6:len(self.str)-1].replace(" ", ",") + "]"
 
     def geojson(self):
-        return ('"bbox" : {0}'.format(self.aslist()))
+        p = Property("bbox", self.aslist())
+        return p.geojson()
 
 
 class Property(object):
