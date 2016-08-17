@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 
@@ -22,7 +21,7 @@ class Property(object):
         self.value = value
 
     def geojson(self):
-        return '"{0}" : "{1}"'.format(self.name, self.value)
+        return '"{0}" : {1}'.format(self.name, self.value)
 
 
 class PropertyCollection(object):

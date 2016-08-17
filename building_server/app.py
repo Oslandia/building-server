@@ -67,7 +67,7 @@ class APIGetCity(Resource):
 getattr_parser = reqparse.RequestParser()
 getattr_parser.add_argument('city', type=str, required=True)
 getattr_parser.add_argument('gid', type=str, required=True)
-getattr_parser.add_argument('attributes', type=str, required=True)
+getattr_parser.add_argument('attribute', type=str, required=True)
 
 
 @api.route("/getAttribute")

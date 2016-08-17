@@ -101,7 +101,7 @@ class Session():
         Parameters
         ----------
         city : str
-        gid : int
+        gid : str
         attribute : str
 
         Returns

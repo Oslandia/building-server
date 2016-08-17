@@ -44,12 +44,13 @@ class GetGeometry(object):
 
         for geom in geomsjson:
             properties = utils.PropertyCollection()
-            property = utils.Property('gid', geom['gid'])
+            property = utils.Property('gid', '"{0}"'.format(geom['gid']))
             properties.add(property)
 
             for attribute in attributes:
-                val = Session.attribute_for_gid(city, geom['gid'], attribute)
-                property = utils.Property(attribute, val)
+                val = Session.attribute_for_gid(city, str(geom['gid']),
+                                                attribute)
+                property = utils.Property(attribute, '"{0}"'.format(val))
                 properties.add(property)
 
             f = utils.Feature(geom['gid'], properties, geom['geom'])
@@ -61,7 +62,7 @@ class GetGeometry(object):
         # build the resulting json
         geometries = utils.Property("geometries", feature_collection.geojson())
         json = ('{{ {0}, "tiles":[{1}]}}'
-                .format(geometries.geomsjson(), bboxes_str))
+                .format(geometries.geojson(), bboxes_str))
 
         return json
 
@@ -75,8 +76,9 @@ class GetGeometry(object):
 
         json = ""
         if not geombin:
-            json = struct.pack('4sIIII', "glTF", 1, 20, 0, 0)  # empty bglTF
-            json += '{"tiles":[]}'
+            json = struct.pack('4sIIII', b"glTF", 1, 20, 0, 0)  # empty bglTF
+            json += b'{"tiles":[]}'
+            json = json.decode("utf-8")
         else:
             offset = Session.offset(city, tile)
 
@@ -131,7 +133,7 @@ class GetCity(object):
         json = ""
         for tile in tiles:
             b = utils.Box3D(tile['bbox'])
-            p = utils.Property("id", tile['quadtile'])
+            p = utils.Property("id", '"{0}"'.format(tile['quadtile']))
 
             tilejson = ('{{ {0}, {1} }}'
                         .format(p.geojson(), b.geojson()))
@@ -149,14 +151,14 @@ class GetAttribute(object):
     def run(self, args):
         city = args['city']
         gids = args['gid'].split(',')
-        attributes = args['attributes'].split(',')
+        attributes = args['attribute'].split(',')
 
         json = ""
         for gid in gids:
             gidjson = ""
             for attribute in attributes:
-                val = Session.attribute_for_gid(city, gid, attribute)
-                property = utils.Property(attribute, val)
+                val = Session.attribute_for_gid(city, str(gid), attribute)
+                property = utils.Property(attribute, '"{0}"'.format(val))
                 if gidjson:
                     gidjson = "{0}, {1}".format(gidjson, property.geojson())
                 else:
