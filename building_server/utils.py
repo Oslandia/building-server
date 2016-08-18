@@ -1,13 +1,40 @@
 # -*- coding: utf-8 -*-
 
+import io
+import yaml
+
+
+class CitiesConfig(object):
+
+    cities = {}
+
+    @classmethod
+    def init(cls, cfgfile):
+        content = io.open(cfgfile, 'r').read()
+        cls.cities = yaml.load(content).get('cities', {})
+
 
 class Box3D(object):
 
     def __init__(self, str):
         self.str = str
 
-    def aslist(self):
-        return "[" + self.str[6:len(self.str)-1].replace(" ", ",") + "]"
+    def aslist(self, bracket=True):
+        if bracket:
+            return "[" + self.str[6:len(self.str)-1].replace(" ", ",") + "]"
+        else:
+            return self.str[6:len(self.str)-1].replace(" ", ",")
+
+    def centroid(self):
+        [p1, p2] = self.corners()
+        centroid = ((p2[0] + p1[0]) / 2., (p2[1] + p1[1]) / 2.)
+        return centroid
+
+    def corners(self):
+        box = self.aslist(bracket=False).split(",")
+        c1 = [float(box[0]), float(box[1]), float(box[2])]
+        c2 = [float(box[3]), float(box[4]), float(box[5])]
+        return [c1, c2]
 
     def geojson(self):
         p = Property("bbox", self.aslist())

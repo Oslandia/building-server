@@ -3,9 +3,9 @@
 
 import struct
 from . import utils
-from . import settings
 from .database import Session
 from .transcode import toglTF
+from .utils import CitiesConfig
 
 
 class GetGeometry(object):
@@ -121,7 +121,7 @@ class GetGeometry(object):
 class GetCities(object):
 
     def run(self):
-        return str(settings.CITIES).replace('\'', '"')
+        return str(CitiesConfig.cities).replace('\'', '"')
 
 
 class GetCity(object):

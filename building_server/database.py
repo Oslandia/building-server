@@ -167,6 +167,159 @@ class Session():
         return cls.query_asdict(sql)
 
     @classmethod
+    def score_for_polygon(cls, city, pol, scoreFunction):
+        """Returns scores
+
+        Parameters
+        ----------
+        city : str
+        poly : list
+            ["x0 y0", "x1 y1", "x2 y2", "x3, y3"]
+        scoreFunction : str
+
+        Returns
+        -------
+        result : list
+            List of dict whith 'score', 'gid' and 'box3d' keys
+        """
+
+        sql = ("SELECT gid, Box3D(geom), {0} as \"score\" FROM {1} "
+               "WHERE (geom && 'POLYGON(({2}, {3}, {4}, {5}, {2}))'::geometry)"
+               " ORDER BY score DESC"
+               .format(scoreFunction, city, pol[0], pol[1], pol[2], pol[3]))
+
+        return cls.query_asdict(sql)
+
+    @classmethod
+    def add_column(cls, city, column, typecol):
+        """Adds a column in table
+
+        Parameters
+        ----------
+        city : str
+        column : str
+        typecol : str
+
+        Returns
+        -------
+        Nothing
+        """
+
+        sql = ("ALTER TABLE {0} ADD COLUMN {1} {2}"
+               .format(city, column, typecol))
+        cls.db.cursor().execute(sql)
+
+    @classmethod
+    def update_table(cls, city, quadtile, weight, gid):
+        """Updates the table for a specific object
+
+        Parameters
+        ----------
+        city : str
+        quadtile : str
+        weight : str
+        gid : str
+
+        Returns
+        -------
+        Nothing
+        """
+
+        sql = ("UPDATE {0} SET quadtile = '{1}', weight = {2} WHERE gid = {3}"
+               .format(city, quadtile, weight, gid))
+        cls.db.cursor().execute(sql)
+
+    @classmethod
+    def create_index(cls, city, column):
+        """Creates an index on the column
+
+        Parameters
+        ----------
+        city : str
+        column : str
+
+        Returns
+        -------
+        Nothing
+        """
+
+        sql = ("CREATE INDEX tileIdx_{0} on {0} ({1})"
+               .format(city, column))
+        cls.db.cursor().execute(sql)
+
+    @classmethod
+    def create_bbox_table(cls, city):
+        """Creates the bbox city
+
+        Parameters
+        ----------
+        city : str
+
+        Returns
+        -------
+        Nothing
+        """
+
+        sql = ("CREATE TABLE {0}_bbox (quadtile varchar(10) PRIMARY KEY"
+               ", bbox Box3D);".format(city))
+        cls.db.cursor().execute(sql)
+
+    @classmethod
+    def insert_into_bbox_table(cls, city, quadtile, bbox):
+        """Insert a new line in bbox table for the city
+
+        Parameters
+        ----------
+        city : str
+        quadtile : str
+        bbox : str
+            In linestring format
+
+        Returns
+        -------
+        Nothing
+        """
+
+        sql = ("INSERT INTO {0}_bbox values ('{1}', "
+               "Box3D(ST_GeomFromText('LINESTRING({2})')))"
+               .format(city, quadtile, bbox))
+        cls.db.cursor().execute(sql)
+
+    @classmethod
+    def drop_column(cls, city, column):
+        """Drops a column in the table
+
+        Parameters
+        ----------
+        city : str
+        column : str
+
+        Returns
+        -------
+        Nothing
+        """
+
+        sql = ("ALTER TABLE {0} DROP COLUMN IF EXISTS {1}"
+               .format(city, column))
+        cls.db.cursor().execute(sql)
+
+    @classmethod
+    def drop_bbox_table(cls, city):
+        """Drops a table
+
+        Parameters
+        ----------
+        city : str
+
+        Returns
+        -------
+        Nothing
+        """
+
+        sql = ("DROP TABLE IF EXISTS {0}_bbox;".format(city))
+        cls.db.cursor().execute(sql)
+
+    @classmethod
     def query(cls, query, parameters=None):
         """Performs a query and yield results
         """

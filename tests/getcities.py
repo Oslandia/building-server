@@ -2,13 +2,18 @@
 
 import unittest
 import json
+import os
+
+from building_server.utils import CitiesConfig
 from building_server.server import GetCities
 
 
 class TestGetCities(unittest.TestCase):
 
     def setUp(self):
-        pass
+        cfgfile = ("{0}/testcfg.yml"
+                   .format(os.path.dirname(os.path.abspath(__file__))))
+        CitiesConfig.init(cfgfile)
 
     def tearDown(self):
         pass

@@ -10,6 +10,7 @@ from yaml import load as yload
 
 from building_server.app import api
 from building_server.database import Session
+from building_server.utils import CitiesConfig
 
 # building server version
 __version__ = '0.1.dev0'
@@ -121,5 +122,6 @@ def create_app(env='Defaults'):
     api.init_app(blueprint)
     app.register_blueprint(blueprint)
     Session.init_app(app)
+    CitiesConfig.init(cfgfile)
 
     return app
