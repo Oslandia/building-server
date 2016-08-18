@@ -1,14 +1,15 @@
 # Building server
 
-This is a prototype for a simple WFS server that retrieves polyhedral surfaces from a POSTGIS database and sends them back in a glTF file.
+This is a prototype for a simple WFS server that retrieves polyhedral surfaces
+from a POSTGIS database and sends them back in a glTF file.
 
 ## Installation
 
 ### Python configuration
 
-The server uses python 2.
+The server uses python 3.
 
-dependencies:
+Requirements:
 
     - cython
     - numpy
@@ -20,19 +21,32 @@ dependencies:
 
     pip install .
 
+Development requirements:
+
+    - nose
+
+Production requirements:
+
+    - uwsgi
+
+### Run unit tests
+
+    ./test/testsuite
+
 ## Configuration
 
-Modify the settings.py file to match your postgres configuration.
+Modify the file *conf/building.yml* to match your postgres configuration.
 
 ## Generating the quadtree and the tile association
 
-    python processDB.py
+    ./building-server-processdb.py conf/building.yml <city>
 
-## launch the server with uwsgi
+## Launch the server with uwsgi
 
-    uwsgi --http :9090 --wsgi-file server.py
+    uwsgi --yml conf/building.uwsgi.yml
 
-## test
+## Example
 
     http://localhost:9090/?query=getCities
+
     http://localhost:9090/?query=getGeometry&city=montreal&tile=1/4/2&format=GeoJSON
