@@ -245,8 +245,8 @@ class Session():
         Nothing
         """
 
-        sql = ("CREATE INDEX tileIdx_{0} on {0} ({1})"
-               .format(city, column))
+        sql = ("CREATE INDEX tileIdx_{0} on {1} ({2})"
+               .format(city.replace(".", ""), city, column))
         cls.db.cursor().execute(sql)
 
     @classmethod
