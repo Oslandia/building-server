@@ -41,6 +41,7 @@ class GetGeometry(object):
 
         # build a features collection with extra properties if necessary
         feature_collection = utils.FeatureCollection()
+        feature_collection.srs = utils.CitiesConfig.cities[city]['srs']
 
         for geom in geomsjson:
             properties = utils.PropertyCollection()

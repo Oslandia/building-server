@@ -103,7 +103,7 @@ class FeatureCollection(object):
 
     def __init__(self):
         self.features = []
-        self.epsg = 3946
+        self.srs = "EPSG:3946"
 
     def add(self, feature):
         self.features.append(feature)
@@ -119,8 +119,8 @@ class FeatureCollection(object):
 
     def _geojson_crs(self):
         json = ('"crs" : {{ "type" : "name",'
-                '"properties" : {{"name" : "EPSG{0}"}}}}'
-                .format(self.epsg))
+                '"properties" : {{"name" : "{0}"}}}}'
+                .format(self.srs))
         return json
 
     def _geojson_features(self):

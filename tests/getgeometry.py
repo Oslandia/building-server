@@ -2,8 +2,10 @@
 
 import unittest
 import json
+import os
 from building_server.database import Session
 from building_server.server import GetGeometry
+from building_server.utils import CitiesConfig
 
 
 class MockSession(object):
@@ -64,6 +66,10 @@ class TestGetGeometry(unittest.TestCase):
 
     def setUp(self):
         # init mock session
+        cfgfile = ("{0}/testcfg.yml"
+                   .format(os.path.dirname(os.path.abspath(__file__))))
+        CitiesConfig.init(cfgfile)
+
         self.mockSession = MockSession()
         Session.offset = self.mockSession.offset
         Session.tile_geom_geojson = self.mockSession.tile_geom_geojson
@@ -109,6 +115,9 @@ class TestGetGeometry(unittest.TestCase):
 
         json_geom = json_result["geometries"]
         self.assertEqual(json_geom["type"], "FeatureCollection")
+
+        json_crs = json_geom['crs']['properties']['name']
+        self.assertEqual(json_crs, "EPSG:2950")
 
         json_fs = json_geom["features"]
         json_f0 = json_fs[0]
