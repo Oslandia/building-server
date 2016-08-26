@@ -161,9 +161,11 @@ class Session():
             List of OrderedDict with 'quadtile' and 'bbox' as keys
         """
 
+        regex = "{0}/".format(level)
+
         sql = ("SELECT quadtile, bbox FROM {0}_bbox"
-               " WHERE substr(quadtile,1,1)='{1}'"
-               .format(city, level))
+               " WHERE substr(quadtile,1,{1})='{2}'"
+               .format(city, len(regex), regex))
         return cls.query_asdict(sql)
 
     @classmethod
