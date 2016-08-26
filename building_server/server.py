@@ -18,9 +18,9 @@ class GetGeometry(object):
             if outputFormat.lower() == "geojson":
                 geometry = self._as_geojson(args)
             else:
-                geometry = self._as_binary(args)
+                geometry = self._as_glTF(args)
         else:
-            geometry = self._as_binary(args)
+            geometry = self._as_glTF(args)
 
         return geometry
 
@@ -67,7 +67,7 @@ class GetGeometry(object):
 
         return json
 
-    def _as_binary(self, args):
+    def _as_glTF(self, args):
         # retrieve arguments
         city = args['city']
         tile = args['tile']
