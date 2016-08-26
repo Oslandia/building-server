@@ -29,7 +29,7 @@ def superbbox():
             [-float("inf"), -float("inf"), -float("inf")]]
 
 
-def initDB(city, conf):
+def initDB(city, conf, scoref):
     extent = conf["extent"]
     table = conf["tablename"]
     maxTileSize = conf["maxtilesize"]
@@ -55,10 +55,9 @@ def initDB(city, conf):
             p2 = "{0} {1}".format(tileExtent[1][0], tileExtent[1][1])
             p3 = "{0} {1}".format(tileExtent[1][0], tileExtent[0][1])
             poly = [p0, p1, p2, p3]
-            scoreFunction = "ST_Area(Box2D(geom))"
 
             qt0 = time.time()
-            scores = Session.score_for_polygon(table, poly, scoreFunction)
+            scores = Session.score_for_polygon(table, poly, scoref)
             qt += time.time() - qt0
 
             geoms = []
@@ -182,6 +181,10 @@ if __name__ == '__main__':
     city_help = 'city to process'
     parser.add_argument('city', metavar='city', type=str, help=city_help)
 
+    score_help = 'score function with "ST_Area(Box2D(geom))" as default value'
+    parser.add_argument('--score', metavar='score', type=str, help=score_help,
+                        default="ST_Area(Box2D(geom))")
+
     args = parser.parse_args()
 
     # load configuration
@@ -231,4 +234,4 @@ if __name__ == '__main__':
     Session.drop_bbox_table(tablename)
 
     # fill the database
-    initDB(args.city, cityconf)
+    initDB(args.city, cityconf, args.score)
