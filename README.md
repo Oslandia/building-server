@@ -21,6 +21,8 @@ dependencies:
 
 Modify the settings.py file to match your postgres configuration.
 
+Do the same with the city.py file and move it in the cities folder.
+
 ## Generating the quadtree and the tile association
 
     python processDB.py
