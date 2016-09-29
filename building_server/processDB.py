@@ -101,7 +101,7 @@ def initDB(cursor, city):
             cursor.execute(query)
     print "Table update time : {0}".format(time.time() - t1)
     t2 = time.time()
-    cursor.execute("CREATE INDEX tileIdx_{0} ON {0} (quadtile)".format(table))
+    cursor.execute("CREATE INDEX tileIdx_{0} ON {1} (quadtile)".format(table.replace(".",""),table))
     print "Index creation time : {0}".format(time.time() - t2)
 
     # create bbox table
