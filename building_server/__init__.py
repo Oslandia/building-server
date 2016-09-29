@@ -122,6 +122,6 @@ def create_app(env='Defaults'):
     api.init_app(blueprint)
     app.register_blueprint(blueprint)
     Session.init_app(app)
-    CitiesConfig.init(cfgfile)
+    CitiesConfig.init(str(cfgfile))
 
     return app
