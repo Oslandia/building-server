@@ -4,6 +4,8 @@ from itertools import chain
 from psycopg2 import connect
 from psycopg2.extras import NamedTupleCursor
 
+from .utils import CitiesConfig
+
 
 class Session():
     """
@@ -30,7 +32,7 @@ class Session():
         """
 
         sql = ("SELECT bbox from {0}_bbox WHERE quadtile = '{1}'"
-               .format(city, tile))
+               .format(CitiesConfig.table(city), tile))
         res = cls.query_aslist(sql)
 
         offset = None
@@ -67,7 +69,8 @@ class Session():
         sql = ("SELECT gid, ST_AsGeoJSON(ST_Translate(geom,"
                "{2},{3},{4}), 2, 1) AS geom from {0}"
                " WHERE quadtile='{1}'"
-               .format(city, tile, -offset[0], -offset[1], -offset[2]))
+               .format(CitiesConfig.table(city), tile, -offset[0], -offset[1],
+                       -offset[2]))
         res = cls.query_asdict(sql)
 
         return res
@@ -89,7 +92,7 @@ class Session():
         """
 
         sql = ("SELECT Box3D(geom), ST_AsBinary(geom) as binary from {0}"
-               " where quadtile='{1}'".format(city, tile))
+               " where quadtile='{1}'".format(CitiesConfig.table(city), tile))
         res = cls.query_asdict(sql)
 
         return res
@@ -110,7 +113,7 @@ class Session():
         """
 
         sql = ("SELECT {0} FROM {1} WHERE gid = {2}"
-               .format(attribute, city, gid))
+               .format(attribute, CitiesConfig.table(city), gid))
         res = cls.query_asdict(sql)
 
         val = None
@@ -142,7 +145,7 @@ class Session():
             cond += "quadtile='{0}'".format(quadtile)
 
         sql = ('SELECT quadtile, bbox from {0}_bbox where {1}'
-               .format(city, cond))
+               .format(CitiesConfig.table(city), cond))
 
         return cls.query_asdict(sql)
 
@@ -165,7 +168,7 @@ class Session():
 
         sql = ("SELECT quadtile, bbox FROM {0}_bbox"
                " WHERE substr(quadtile,1,{1})='{2}'"
-               .format(city, len(regex), regex))
+               .format(CitiesConfig.table(city), len(regex), regex))
         return cls.query_asdict(sql)
 
     @classmethod
@@ -208,7 +211,7 @@ class Session():
         """
 
         sql = ("ALTER TABLE {0} ADD COLUMN {1} {2}"
-               .format(city, column, typecol))
+               .format(CitiesConfig.table(city), column, typecol))
         cls.db.cursor().execute(sql)
 
     @classmethod
@@ -228,7 +231,7 @@ class Session():
         """
 
         sql = ("UPDATE {0} SET quadtile = '{1}', weight = {2} WHERE gid = {3}"
-               .format(city, quadtile, weight, gid))
+               .format(CitiesConfig.table(city), quadtile, weight, gid))
         cls.db.cursor().execute(sql)
 
     @classmethod
@@ -246,7 +249,8 @@ class Session():
         """
 
         sql = ("CREATE INDEX tileIdx_{0} on {1} ({2})"
-               .format(city.replace(".", ""), city, column))
+               .format(CitiesConfig.table(city).replace(".", ""), city,
+                       column))
         cls.db.cursor().execute(sql)
 
     @classmethod
@@ -263,7 +267,7 @@ class Session():
         """
 
         sql = ("CREATE TABLE {0}_bbox (quadtile varchar(10) PRIMARY KEY"
-               ", bbox Box3D);".format(city))
+               ", bbox Box3D);".format(CitiesConfig.table(city)))
         cls.db.cursor().execute(sql)
 
     @classmethod
@@ -284,7 +288,7 @@ class Session():
 
         sql = ("INSERT INTO {0}_bbox values ('{1}', "
                "Box3D(ST_GeomFromText('LINESTRING({2})')))"
-               .format(city, quadtile, bbox))
+               .format(CitiesConfig.table(city), quadtile, bbox))
         cls.db.cursor().execute(sql)
 
     @classmethod
@@ -302,7 +306,7 @@ class Session():
         """
 
         sql = ("ALTER TABLE {0} DROP COLUMN IF EXISTS {1}"
-               .format(city, column))
+               .format(CitiesConfig.table(city), column))
         cls.db.cursor().execute(sql)
 
     @classmethod
@@ -318,7 +322,8 @@ class Session():
         Nothing
         """
 
-        sql = ("DROP TABLE IF EXISTS {0}_bbox;".format(city))
+        sql = ("DROP TABLE IF EXISTS {0}_bbox;"
+               .format(CitiesConfig.table(city)))
         cls.db.cursor().execute(sql)
 
     @classmethod

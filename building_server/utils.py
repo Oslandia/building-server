@@ -13,6 +13,13 @@ class CitiesConfig(object):
         content = io.open(cfgfile, 'r').read()
         cls.cities = yaml.load(content).get('cities', {})
 
+    @classmethod
+    def table(cls, city):
+        if city in cls.cities:
+            return cls.cities[city]['tablename']
+        else:
+            return None
+
 
 class Box3D(object):
 
