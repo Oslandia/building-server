@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import struct
+from flask import Response
 from . import utils
 from .database import Session
 from .transcode import toglTF
@@ -22,7 +23,11 @@ class GetGeometry(object):
         else:
             geometry = self._as_glTF(args)
 
-        return geometry
+        resp = Response(geometry)
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Content-Type'] = 'text/plain'
+
+        return resp
 
     def _as_geojson(self, args):
 
@@ -122,7 +127,13 @@ class GetGeometry(object):
 class GetCities(object):
 
     def run(self):
-        return str(CitiesConfig.cities).replace('\'', '"')
+        cities_str = str(CitiesConfig.cities).replace('\'', '"')
+
+        resp = Response(cities_str)
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Content-Type'] = 'text/plain'
+
+        return resp
 
 
 class GetCity(object):
@@ -144,7 +155,11 @@ class GetCity(object):
                 json = tilejson
         json = '{{"tiles":[{0}]}}'.format(json)
 
-        return json
+        resp = Response(json)
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Content-Type'] = 'text/plain'
+
+        return resp
 
 
 class GetAttribute(object):
@@ -172,4 +187,9 @@ class GetAttribute(object):
                 json = gidjson
 
         json = "[{0}]".format(json)
-        return json
+
+        resp = Response(json)
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Content-Type'] = 'text/plain'
+
+        return resp
