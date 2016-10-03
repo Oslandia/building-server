@@ -226,6 +226,7 @@ if __name__ == '__main__':
     app = type('', (), {})()
     app.config = ymlconf_db
     Session.init_app(app)
+    utils.CitiesConfig.init(str(args.cfg))
 
     # reinitialize the database
     tablename = cityconf['tablename']
