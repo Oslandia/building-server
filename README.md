@@ -1,7 +1,10 @@
 # Building server
 
-This is a prototype for a simple WFS server that retrieves polyhedral surfaces
-from a POSTGIS database and sends them back in a glTF file.
+This is a prototype for a simple web server that retrieves polyhedral surfaces
+from a POSTGIS database and sends them back in a glTF or GeoJSON file.
+
+It relies on a Bounding Volume Hierarchy (BVH) to transmit progressively the
+geometric data. A script for building the BVH is provided in this repository.
 
 ## Installation
 
@@ -37,7 +40,7 @@ Production requirements:
 
 Modify the file *conf/building.yml* to match your postgres configuration.
 
-## Generating the quadtree and the tile association
+## Generating the BVH and the tile association
 
     ./building-server-processdb.py conf/building.yml <city>
 
