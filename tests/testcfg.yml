@@ -1,0 +1,17 @@
+flask:
+  DEBUG: True
+  LOG_LEVEL: debug
+  PG_HOST: localhost
+  PG_NAME: gml
+  PG_PORT: 5432
+  PG_USER: blottiere
+  PG_PASSWORD:
+
+cities:
+  montreal:
+    tablename: montreal
+    extent: [[297949.75,5040582.5], [299337.78,5042223.5]]
+    maxtilesize: 2000
+    srs: "EPSG:2950"
+    attributes: []
+    featurespertile: 2

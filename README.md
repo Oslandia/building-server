@@ -1,43 +1,55 @@
 # Building server
 
-This is a prototype for a simple WFS server that retrieves polyhedral surfaces from a POSTGIS database and sends them back in a glTF file.
+This is a prototype for a simple web server that retrieves polyhedral surfaces
+from a POSTGIS database and sends them back in a glTF or GeoJSON file.
+
+It relies on a Bounding Volume Hierarchy (BVH) to transmit progressively the
+geometric data. A script for building the BVH is provided in this repository.
 
 ## Installation
 
 ### Python configuration
 
-The server uses python 2.
+The server uses python 3.
 
-Install the necessary modules :
-```
-easy_install cython
-easy_install numpy
-easy_install triangle
-sudo apt-get install python-psycopg2
-```
+Requirements:
 
-### Apache configuration
+    - cython
+    - numpy
+    - triangle
+    - psycopg2
+    - flask
+    - flask-restplus
+    - pyyaml
 
-Install the apache wsgi module :
-```
-sudo apt-get install libapache2-mod-wsgi
-```
+    pip install .
 
-In the apache site configuration file add the following lines :
+Development requirements:
 
-```
-WSGIPythonPath /*path_to_building_server*/
-```
+    - nose
 
-```
-WSGIScriptAlias /server /*path_to_building_server*/server.py
+Production requirements:
 
-<Directory /*path_to_building_server*/>
-	Order allow,deny
-	Allow from all
-</Directory>
-```
+    - uwsgi
+
+### Run unit tests
+
+    ./test/testsuite
 
 ## Configuration
 
-Modify the settings.py file to match your postgres configuration.
+Modify the file *conf/building.yml* to match your postgres configuration.
+
+## Generating the BVH and the tile association
+
+    ./building-server-processdb.py conf/building.yml <city>
+
+## Launch the server with uwsgi
+
+    uwsgi --yml conf/building.uwsgi.yml
+
+## Example
+
+    http://localhost:9090/?query=getCities
+
+    http://localhost:9090/?query=getGeometry&city=montreal&tile=1/4/2&format=GeoJSON
