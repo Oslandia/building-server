@@ -17,7 +17,7 @@ $ git clone https://github.com/Oslandia/building-server
 $ cd building-server
 $ virtualenv -p /usr/bin/python3 venv
 $ . venv/bin/activate
-(venv)$ pip install --upgrade setup
+(venv)$ pip install --upgrade setuptools
 (venv)$ pip install -e .
 ```
 
