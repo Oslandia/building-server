@@ -13,6 +13,7 @@ geometric data. A script for building the BVH is provided in this repository.
 To use building-server from sources:
 
 ```
+$ apt-get install python3-dev
 $ git clone https://github.com/Oslandia/building-server
 $ cd building-server
 $ virtualenv -p /usr/bin/python3 venv
@@ -53,7 +54,7 @@ In case of the next error:
 (venv)$ uwsgi --yml conf/building.uwsgi.yml
 ImportError: No module named site
 (venv)$ deactivate
-(venv)$ . venv/bin/activate
+$ . venv/bin/activate
 (venv)$ uwsgi --yml conf/building.uwsgi.yml
 spawned uWSGI worker 1 (pid: 5984, cores: 1)
 
