@@ -8,45 +8,57 @@ geometric data. A script for building the BVH is provided in this repository.
 
 ## Installation
 
-### Python configuration
+### From sources
 
-The server uses python 3.
+To use building-server from sources:
 
-Requirements:
+```
+$ apt-get install python3-dev
+$ git clone https://github.com/Oslandia/building-server
+$ cd building-server
+$ virtualenv -p /usr/bin/python3 venv
+$ . venv/bin/activate
+(venv)$ pip install --upgrade setuptools
+(venv)$ pip install -e .
+```
 
-    - cython
-    - numpy
-    - triangle
-    - psycopg2
-    - flask
-    - flask-restplus
-    - pyyaml
+If you want to run unit tests:
 
-    pip install .
-
-Development requirements:
-
-    - nose
-
-Production requirements:
-
-    - uwsgi
-
-### Run unit tests
-
-    ./test/testsuite
-
-## Configuration
-
-Modify the file *conf/building.yml* to match your postgres configuration.
+```
+(venv)$ pip install nose
+(venv)$ nosetests
+...
+```
 
 ## Generating the BVH and the tile association
 
     ./building-server-processdb.py conf/building.yml <city>
 
-## Launch the server with uwsgi
+## How to run
 
-    uwsgi --yml conf/building.uwsgi.yml
+building-server has been tested with uWSGI and Nginx.
+
+Once files *building.uwsgi.yml* and *building.yml* are well configurated for your
+environment, you can run the building-server:
+
+```
+(venv)$ pip install uwsgi
+(venv)$ uwsgi --yml conf/building.uwsgi.yml
+spawned uWSGI worker 1 (pid: 5984, cores: 1)
+
+```
+
+In case of the next error:
+
+```
+(venv)$ uwsgi --yml conf/building.uwsgi.yml
+ImportError: No module named site
+(venv)$ deactivate
+$ . venv/bin/activate
+(venv)$ uwsgi --yml conf/building.uwsgi.yml
+spawned uWSGI worker 1 (pid: 5984, cores: 1)
+
+```
 
 ## Example
 
