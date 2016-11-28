@@ -7,6 +7,7 @@ from . import utils
 from .database import Session
 from .transcode import toglTF
 from .utils import CitiesConfig
+from .scenebuilder import SceneBuilder
 
 
 class GetGeometry(object):
@@ -187,6 +188,71 @@ class GetAttribute(object):
                 json = gidjson
 
         json = "[{0}]".format(json)
+
+        resp = Response(json)
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Content-Type'] = 'text/plain'
+
+        return resp
+
+class GetTile(object):
+
+    def run(self, args):
+        city = city = args['city']
+        tile = args['tile']
+        representation = args['representation']
+        layer = args["layer"]
+
+        # get offset in database
+        offset = (0,0,0)# Session.offset(city, tile)
+
+        # get geometries for a specific tile in database
+        geomsjson = Session.tile_geom_geojson2(city, offset, tile, layer, representation)
+
+        # build a features collection with extra properties if necessary
+        feature_collection = utils.FeatureCollection()
+        feature_collection.srs = utils.CitiesConfig.cities[city]['srs']
+
+        rep = utils.CitiesConfig.representation(city, layer, representation)
+        # TODO: use 3d-tiles formats
+        for geom in geomsjson:
+            properties = utils.PropertyCollection()
+            if rep["datatype"] == "2.5D":
+                property = utils.Property('gid', '"{0}"'.format(geom['gid']))
+                properties.add(property)
+                property = utils.Property('zmin', '{0}'.format(geom['zmin']))
+                properties.add(property)
+                property = utils.Property('zmax', '{0}'.format(geom['zmax']))
+                properties.add(property)
+            elif rep["datatype"] == "polyhedralsurface":
+                property = utils.Property('gid', '"{0}"'.format(geom['gid']))
+                properties.add(property)
+
+            f = utils.Feature(geom['gid'], properties, geom['geom'])
+            feature_collection.add(f)
+
+        # build the resulting json
+        geometries = utils.Property("geometries", feature_collection.geojson())
+        json = '{' + geometries.geojson() + '}'
+
+        resp = Response(json)
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Content-Type'] = 'text/plain'
+
+        return resp
+
+class GetScene(object):
+
+    def run(self, args):
+        city = args['city']
+        layer = args['layer']
+        representationList = args['representations'].split(',')
+        weightList = args['weights'].split(',')
+
+        representations = []
+        for i in range(0, len(representationList)):
+            representations.append( (representationList[i], float(weightList[i])) )
+        json = SceneBuilder.build(Session.db.cursor(), city, layer, representations)
 
         resp = Response(json)
         resp.headers['Access-Control-Allow-Origin'] = '*'

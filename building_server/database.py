@@ -76,6 +76,49 @@ class Session():
         return res
 
     @classmethod
+    def tile_geom_geojson2(cls, city, offset, tile, layer, representation):
+        """Returns a list of geometries in string representation.
+
+        Parameters
+        ----------
+        city : str
+        offset : list
+            [x, y, z] as float
+        tile : str
+            '6/22/28'
+        representation : str
+            'lod1'
+
+        Returns
+        -------
+        res : list
+            List of OrderedDict with a 'gid' and a 'geom' key.
+
+            The 'geom' key is defined in geojson format such as
+            '{"type":"", "bbox":"","coordinates":[[[[x0, y0, z0], ...]]]}'
+        """
+        # TODO temp
+        rep = CitiesConfig.representation(city, layer, representation)
+        table = rep["tablename"]
+        if rep["datatype"] == "2.5D":
+            # TODO either generate proper gid or remove as gid
+            sql = ("SELECT tile AS gid, zmin, zmax, ST_AsGeoJSON(footprint,"
+                   "2, 1) AS geom from {0}"
+                   " WHERE tile='{1}'"
+                   .format(table, tile, -offset[0], -offset[1],
+                           -offset[2]))
+        elif rep["datatype"] == "polyhedralsurface":
+            sql = ("SELECT gid, ST_AsGeoJSON(ST_Translate(geom,"
+                   "{2},{3},{4}), 2, 1) AS geom from {0}"
+                   " WHERE tile='{1}'"
+                   .format(table, tile, -offset[0], -offset[1],
+                           -offset[2]))
+
+        res = cls.query_asdict(sql)
+
+        return res
+
+    @classmethod
     def tile_geom_binary(cls, city, tile):
         """Returns a list of geometries in binary representation
 

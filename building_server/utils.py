@@ -20,6 +20,24 @@ class CitiesConfig(object):
         else:
             return None
 
+    @classmethod
+    def allRepresentations(cls, city, layer):
+        return cls.cities.get(city, {}).get('layers', {}).get(layer, {})\
+            .get('representations', None)
+
+    @classmethod
+    def representation(cls, city, layer, representation):
+        return cls.cities.get(city, {}).get('layers', {}).get(layer, {})\
+            .get('representations', {}).get(representation, None)
+
+    @classmethod
+    def tileTable(cls, city):
+        return cls.cities.get(city, {}).get('tiles', None)
+
+    @classmethod
+    def tileHierarchy(cls, city):
+        return cls.cities.get(city, {}).get('hierarchy', None)
+
 
 class Box3D(object):
 
