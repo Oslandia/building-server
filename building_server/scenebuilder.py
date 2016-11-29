@@ -57,6 +57,7 @@ class SceneBuilder():
         # Calculer le score de chaque représentation
         nodes = {}
         lvl0Nodes = []
+        lvl0Tiles = []
         query = "SELECT tile, depth, bbox FROM {0}".format(tileTable)
         cursor.execute(query)
         rows = cursor.fetchall()
@@ -79,66 +80,160 @@ class SceneBuilder():
             for i, rep in enumerate(existingRepresentations):
                 node = Node(r[0], rep[0], rep[1], rep[2]);
                 nodeRep.append(node)
-                if depth == 0 and i == 0:
-                    lvl0Nodes.append(node)
                 if i != 0:
-                    nodeRep[0].children.append(node)
-                    node.parent = nodeRep[0]
+                    nodeRep[i-1].children.append(node)
+                    node.parent = nodeRep[i-1]
             nodes[r[0]] = nodeRep
 
+            if r[1] == 0:
+                lvl0Tiles.append(r[0])
 
-        # Linking nodes
+
+        # Build hierarchy
         query = "SELECT tile, child FROM {0}".format(tileHierarchy)
         cursor.execute(query)
         rows = cursor.fetchall()
+        tree = {}
         for r in rows:
-            if(len(nodes[r[0]]) != 0 and len(nodes[r[1]]) != 0):
-                nodes[r[0]][-1].add(nodes[r[1]][0])
+            if r[0] not in tree:
+                tree[r[0]] = []
+            tree[r[0]].append(r[1])
 
-        # Parcours hierarchie
+        # Linking nodes
+        lvl0Nodes = []
+        # For each tile at depth 0
+        for n in lvl0Tiles:
+            # Ordered list (by detail) of representations of the node n
+            noderep = nodes[n]
+            # Build node/representation tree
+            children = cls.addChildren(tree, nodes, n)
+            # Link children nodes to level 0 nodes
+            if len(noderep) == 0:
+                # No level 0 tiles: children become level 0 tiles
+                for nr in children:
+                    lvl0Nodes.append(nr[0])
+            else:
+                # There is at least one representation for the levl 0 tile
+                # Add most detailed representation as level 0 node
+                lvl0Nodes.append(noderep[0])
+                #for nr in children:
+                    # Add children to least detailed representation
+                #    noderep[-1].add(nr[0])
+        """
+        for r in rows:
+            if len(nodes[r[0]]) != 0:
+                if len(nodes[r[1]]) != 0:
+                    nodes[r[0]][-1].add(nodes[r[1]][0])
+        """
+        # Reorganise hierarchy based on weights
+        lvl0Nodes = cls.pushUp(lvl0Nodes)
+
+        # Add single root if necessary
         if len(lvl0Nodes) == 1:
             root = lvl0Nodes[0]
         else:
-            root = Node(-1, "None", 0)
-            root.children = lvl0Nodes
+            pmin = [float("inf"), float("inf"), float("inf")]
+            pmax = [-float("inf"), -float("inf"), -float("inf")]
+            for n in lvl0Nodes:
+                corners = n.box.corners()
+                pmin = [min(pmin[i], corners[0][i]) for i in range(0,3)]
+                pmax = [max(pmax[i], corners[1][i]) for i in range(0,3)]
+            box = 'Box3D({0},{1},{2},{3},{4},{5})'.format(*(pmin+pmax))
+            box = utils.Box3D(box)
 
-        cls.pushUp(root)
+            root = Node(-1, None, 0, box)
+            root.children = lvl0Nodes
 
         return cls.to3dTiles(root, city, layer)
 
     @classmethod
-    def pushUp(cls, root):
-        toRemove = []
-        toCombine = {}
-        for n in walk(root):
-            highestNode = cls.findHighestNode(n.weight, n)
-            if highestNode != n:
-                if highestNode not in toCombine:
-                    toCombine[highestNode] = []
-                toCombine[highestNode].append(n)
-                toRemove.append(n)
-            n.leaf = (len(n.children) == 0)
+    def addChildren(cls, tree, allNodes, nodeId):
+        # Node is a leaf: end recursion
+        if nodeId not in tree:
+            return []
 
-        for n in toRemove:
-            parent = n.parent
-            n.parent.remove(n)
+        children = []
+        # For each child node
+        for n in tree[nodeId]:
+            # Ordered list (by detail) of representations of the node n
+            nr = allNodes[n]
+            if len(nr) != 0:
+                children.append(nr)
 
+        noChild = len(children) == 0
+        for n in tree[nodeId]:
+            # Recursion
+            c = cls.addChildren(tree, allNodes, n)
+            # If children nodes have no representation, check if there are any
+            # representations lower in the tree and add them as children
+            if noChild:
+                children += c
 
-        for n in toCombine:
-            if len(n.children) == 0:
-                # Replace
-                for combiners in toCombine[n]:
-                    n.parent.add(combiners)
-                n.parent.remove(n)
-            else:
-                # Combine
-                for combiners in toCombine[n]:
-                    n.combinees.append(combiners)
+        # Ordered list (by detail) of representations of the current node
+        nodeReps = allNodes[nodeId]
+        if len(nodeReps) != 0:
+            for nr in children:
+                # Add children to least detailed representation
+                nodeReps[-1].add(nr[0])
+
+        return children
+
+    @classmethod
+    def pushUp(cls, lvl0Nodes):
+        newLvl0Nodes = []
+        for root in lvl0Nodes:
+            lvl0NodeIsReplace = False
+
+            toRemove = []
+            toCombine = {}
+            # Find which node to move upwards
+            for n in walk(root):
+                # Find highest node with witch to combine n
+                highestNode = cls.findHighestNode(n.weight, n)
+                if highestNode != n:
+                    # If highest node not yet registered
+                    if highestNode not in toCombine:
+                        toCombine[highestNode] = []
+                    # Indicate that n will be combined with highestNode
+                    toCombine[highestNode].append(n)
+                    toRemove.append(n)
+
+            # Remove parent link for moving nodes
+            while len(toRemove) != 0:
+                toRemove2 = []
+                for n in toRemove:
+                    parent = n.parent
+                    parent.remove(n)
+                    if len(parent.children) == 0 and parent not in toCombine:
+                        toRemove2.append(parent)
+                toRemove = toRemove2
+
+            # Combine nodes
+            for n in toCombine:
+                if len(n.children) == 0:
+                    # All children were moved upwards : replace node
+                    if n.parent == None:
+                        # No parent: these are new lvl0 nodes
+                        lvl0NodeIsReplace = True
+                        for combiners in toCombine[n]:
+                            newLvl0Nodes.append(combiners)
+                    else:
+                        for combiners in toCombine[n]:
+                            n.parent.add(combiners)
+                        n.parent.remove(n)
+                else:
+                    # Combine TODO: combinees not handled yet!
+                    for combiners in toCombine[n]:
+                        n.combinees.append(combiners)
+            if not lvl0NodeIsReplace:
+                newLvl0Nodes.append(root)
+
+        return newLvl0Nodes
 
     @classmethod
     def findHighestNode(cls, w, node):
         if node.parent == None:
-                return node
+            return node
         if node.parent.weight >= w:
             return cls.findHighestNode(w, node.parent)
         else:
@@ -166,12 +261,13 @@ class SceneBuilder():
             "boundingVolume": {
                 "box": box
             },
-            "content": {
-                "url": "getTile?city={0}&layer={1}&tile={2}&representation={3}".format(city, layer, node.id, node.representation)
-            },
-            "geometricError": 100 / node.weight, # TODO
+            "geometricError": 100,# TODO
             "children": [cls.to3dTiles_r(n, city, layer) for n in node.children]
         }
+        if node.representation != None:
+            tile["content"] = {
+                "url": "getTile?city={0}&layer={1}&tile={2}&representation={3}".format(city, layer, node.id, node.representation)
+            }
         return tile
 
 """
