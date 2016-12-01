@@ -99,7 +99,7 @@ def create_app(env='Defaults'):
     :returns: flask application instance
     """
     app = Flask(__name__)
-    cfgfile = os.environ.get('BUILDING_SETTINGS')
+    cfgfile = os.environ.get('BUILDING_NEXT_SETTINGS')
     if cfgfile:
         app.config.update(load_yaml_config(cfgfile))
     else:
