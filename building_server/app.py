@@ -102,7 +102,7 @@ getscene_parser.add_argument('representations', type=str, required=True)
 getscene_parser.add_argument('weights', type=str, required=True)
 # TODO: customisation parameters
 @api.route("/getScene")
-class APIGetTile(Resource):
+class APIGetScene(Resource):
 
     @api.expect(getscene_parser, validate=True)
     def get(self):
