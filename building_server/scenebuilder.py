@@ -268,6 +268,8 @@ class SceneBuilder():
             tile["content"] = {
                 "url": "getTile?city={0}&layer={1}&tile={2}&representation={3}".format(city, layer, node.id, node.representation)
             }
+        else:
+            tile["refine"] = "add"
         return tile
 
 """
