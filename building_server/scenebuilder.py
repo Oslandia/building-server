@@ -12,8 +12,9 @@ from . import utils
 
 class Node(object):
 
-    def __init__(self, id, representation, weight, box):
+    def __init__(self, id, depth, representation, weight, box):
         self.id = id
+        self.depth = depth
         self.representation = representation
         self.weight = weight
         self.children = []
@@ -58,7 +59,7 @@ class SceneBuilder():
         nodes = {}
         lvl0Nodes = []
         lvl0Tiles = []
-        query = "SELECT tile, depth, bbox FROM {0}".format(tileTable)
+        query = "SELECT gid, depth, bbox FROM {0}".format(tileTable)
         cursor.execute(query)
         rows = cursor.fetchall()
         for r in rows:
@@ -78,7 +79,7 @@ class SceneBuilder():
             # Linking node's representations
             nodeRep = []
             for i, rep in enumerate(existingRepresentations):
-                node = Node(r[0], rep[0], rep[1], rep[2]);
+                node = Node(r[0], depth, rep[0], rep[1], rep[2]);
                 nodeRep.append(node)
                 if i != 0:
                     nodeRep[i-1].children.append(node)
@@ -141,7 +142,7 @@ class SceneBuilder():
             box = 'Box3D({0},{1},{2},{3},{4},{5})'.format(*(pmin+pmax))
             box = utils.Box3D(box)
 
-            root = Node(-1, None, 0, box)
+            root = Node(-1, -1, None, 0, box)
             root.children = lvl0Nodes
 
         return cls.to3dTiles(root, city, layer)
@@ -261,7 +262,7 @@ class SceneBuilder():
             "boundingVolume": {
                 "box": box
             },
-            "geometricError": 100,# TODO
+            "geometricError": 200 / (node.weight + 2),# TODO
             "children": [cls.to3dTiles_r(n, city, layer) for n in node.children]
         }
         if node.representation != None:

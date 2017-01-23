@@ -50,6 +50,9 @@ class Box3D(object):
         else:
             return self.str[6:len(self.str)-1].replace(" ", ",")
 
+    def asarray(self):
+        return [[float(n) for n in s.split(" ")] for s in self.str[6:len(self.str)-1].split(",")]
+
     def centroid(self):
         [p1, p2] = self.corners()
         centroid = ((p2[0] + p1[0]) / 2., (p2[1] + p1[1]) / 2.)

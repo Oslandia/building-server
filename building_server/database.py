@@ -45,6 +45,42 @@ class Session():
 
         return offset
 
+    # TODO: merge offset and offset2
+    @classmethod
+    def offset2(cls, city, tile):
+        """Returns a 3D offset for a specific tile
+
+        Parameters
+        ----------
+        city : str
+        tile : str
+            '6/22/28'
+
+        Returns
+        -------
+        offset : list
+            [x, y, z] as float or None if no tile is found
+        """
+
+        table = CitiesConfig.tileTable(city)
+        sql = ("SELECT Box2D(footprint) AS box from {0} WHERE gid = '{1}'"
+               .format(table, tile))
+        res = cls.query_aslist(sql)
+
+        offset = None
+        if res:
+            o = res[0]
+            box2D = o[4:len(o)-1]   # remove "BOX(" and ")"
+            part = box2D.split(',')
+            p1 = part[0].split(' ')
+            p2 = part[1].split(' ')
+            offset = [
+                (float(p1[0]) + float(p2[0])) / 2,
+                (float(p1[1]) + float(p2[1])) / 2,
+                0]
+
+        return offset
+
     @classmethod
     def tile_geom_geojson(cls, city, offset, tile):
         """Returns a list of geometries in string representation.
@@ -102,14 +138,15 @@ class Session():
         table = rep["tablename"]
         if rep["datatype"] == "2.5D":
             # TODO either generate proper gid or remove as gid
-            sql = ("SELECT tile AS gid, zmin, zmax, ST_AsGeoJSON(footprint,"
+            sql = ("SELECT tile AS gid, zmin, zmax, ST_AsGeoJSON(geom,"
                    "2, 1) AS geom from {0}"
                    " WHERE tile='{1}'"
                    .format(table, tile, -offset[0], -offset[1],
                            -offset[2]))
         elif rep["datatype"] == "polyhedralsurface":
-            sql = ("SELECT gid, ST_AsGeoJSON(ST_Translate(geom,"
-                   "{2},{3},{4}), 2, 1) AS geom from {0}"
+            sql = ("SELECT gid, ST_AsBinary(ST_Translate(geom,"
+                   "{2},{3},{4})) AS geom, Box3D(ST_Translate(geom,"
+                   "{2},{3},{4})) AS box from {0}"
                    " WHERE tile='{1}'"
                    .format(table, tile, -offset[0], -offset[1],
                            -offset[2]))

@@ -2,3 +2,4 @@ flask
 flask-restplus
 pyyaml
 psycopg2
+py3dtiles

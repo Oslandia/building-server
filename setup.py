@@ -14,7 +14,8 @@ requirements = (
     'psycopg2',
     'flask',
     'flask-restplus',
-    'pyyaml'
+    'pyyaml',
+    'py3dtiles'
 )
 
 prod_requirements = (

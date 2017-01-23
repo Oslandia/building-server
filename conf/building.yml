@@ -11,19 +11,19 @@ cities:
   lyon:
     extent: [[1837816.94334,5170036.4587], [1847692.32501,5178412.82698]]
     srs: "EPSG:3946"
-    hierarchy: "next.hierarchy"
-    tiles: "next.tiles"
+    hierarchy: "test.hierarchy"
+    tiles: "test.tiles"
     layers:
       buildings:
-        tablename: "next.building_tiles"
+        tablename: "test.building_tiles"
         attributes: []
         representations:
           lod2:
-            tablename: "next.lod2"
+            tablename: "test.lod2"
             datatype: "polyhedralsurface"
             detail: 2
 
           lod1:
-            tablename: "next.ilots_generalises"
+            tablename: "test.lod1"
             datatype: "2.5D"
             detail: 1
