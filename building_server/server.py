@@ -203,23 +203,23 @@ class GetTile(object):
         city = city = args['city']
         tile = args['tile']
         representation = args['representation']
-        layer = args["layer"]
+        layer = args['layer']
+        depth = args['depth']
+        isFeature = (depth == len(CitiesConfig.scales(city)) - 1)
+        gidOrTile = 'gid' if isFeature else 'tile'
 
         # get offset in database
         # WARNING: z offset is always 0
         offset = Session.offset2(city, tile)
-
-        # get geometries for a specific tile in database
-        geomsjson = Session.tile_geom_geojson2(city, offset, tile, layer, representation)
 
         # build a features collection with extra properties if necessary
         feature_collection = utils.FeatureCollection()
         feature_collection.srs = utils.CitiesConfig.cities[city]['srs']
 
         rep = utils.CitiesConfig.representation(city, layer, representation)
-        # TODO: use 3d-tiles formats
 
-        if rep["datatype"] == "polyhedralsurface":
+        if rep['datatype'] == 'polyhedralsurface':
+            geoms = Session.tile_polyhedral(city, offset, tile, isFeature, layer, representation)
             wkbs = []
             boxes = []
             transform = np.array([
@@ -228,40 +228,36 @@ class GetTile(object):
                 [0,0,1,offset[2]],
                 [0,0,0,1]], dtype=float)
             transform = transform.flatten('F')
-            for geom in geomsjson:
+            for geom in geoms:
                 wkbs.append(geom['geom'])
                 box = Box3D(geom['box'])
                 boxes.append(box.asarray())
             gltf = GlTF.from_wkb(wkbs, boxes, transform)
             b3dm = B3dm.from_glTF(gltf)
             resp = Response(b3dm.to_array().tostring())
-            resp.headers['Access-Control-Allow-Origin'] = '*'
             resp.headers['Content-Type'] = 'application/octet-stream'
-            return resp
-
-        for geom in geomsjson:
-            properties = utils.PropertyCollection()
-            if rep["datatype"] == "2.5D":
-                property = utils.Property('gid', '"{0}"'.format(geom['gid']))
+        elif rep['datatype'] == '2.5D':
+            # TODO: use 3d-tiles formats
+            geoms = Session.tile_2_5D(city, offset, tile, isFeature, layer, representation)
+            for geom in geoms:
+                properties = utils.PropertyCollection()
+                property = utils.Property(gidOrTile, '"{0}"'.format(geom[gidOrTile]))
                 properties.add(property)
                 property = utils.Property('zmin', '{0}'.format(geom['zmin']))
                 properties.add(property)
                 property = utils.Property('zmax', '{0}'.format(geom['zmax']))
                 properties.add(property)
-            elif rep["datatype"] == "polyhedralsurface":
-                property = utils.Property('gid', '"{0}"'.format(geom['gid']))
-                properties.add(property)
+                f = utils.Feature(geom[gidOrTile], properties, geom['geom'])
+                feature_collection.add(f)
 
-            f = utils.Feature(geom['gid'], properties, geom['geom'])
-            feature_collection.add(f)
+            # build the resulting json
+            geometries = utils.Property('geometries', feature_collection.geojson())
+            json = '{' + geometries.geojson() + '}'
 
-        # build the resulting json
-        geometries = utils.Property("geometries", feature_collection.geojson())
-        json = '{' + geometries.geojson() + '}'
+            resp = Response(json)
+            resp.headers['Content-Type'] = 'text/plain'
 
-        resp = Response(json)
         resp.headers['Access-Control-Allow-Origin'] = '*'
-        resp.headers['Content-Type'] = 'text/plain'
 
         return resp
 

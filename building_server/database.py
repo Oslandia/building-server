@@ -63,7 +63,7 @@ class Session():
         """
 
         table = CitiesConfig.tileTable(city)
-        sql = ("SELECT Box2D(footprint) AS box from {0} WHERE gid = '{1}'"
+        sql = ("SELECT Box2D(footprint) AS box from {0} WHERE tile = '{1}'"
                .format(table, tile))
         res = cls.query_aslist(sql)
 
@@ -112,7 +112,55 @@ class Session():
         return res
 
     @classmethod
-    def tile_geom_geojson2(cls, city, offset, tile, layer, representation):
+    def tile_polyhedral(cls, city, offset, tile, isFeature, layer, representation):
+        """Returns a list of geometries in binary form.
+
+        Parameters
+        ----------
+        city : str
+        offset : list
+            [x, y, z] as float
+        tile : int
+        isFeature : boolean
+        layer : str
+            'buildings'
+        representation : str
+            'lod1'
+
+        Returns
+        -------
+        res : list
+            List of OrderedDict with a 'gid' (or 'tile' if not feature) and a 'geom' key.
+
+            The 'geom' key is defined in binary wkb format.
+        """
+
+        rep = CitiesConfig.representation(city, layer, representation)
+        if isFeature:
+            # TODO optimise
+            table = rep["featuretable"]
+            featureTable = CitiesConfig.featureTable(city, layer)
+            sql = ("WITH t AS (SELECT gid FROM {1} WHERE tile='{2}')"
+            "SELECT {0}.gid, ST_AsBinary(ST_Translate(geom,"
+            "{3},{4},{5})) AS geom, Box3D(ST_Translate(geom,"
+            "{3},{4},{5})) AS box from {0} JOIN t ON {0}.gid=t.gid"
+            .format(table, featureTable, tile, -offset[0], -offset[1],
+                    -offset[2]))
+        else:
+            table = rep["tiletable"]
+            sql = ("SELECT tile, ST_AsBinary(ST_Translate(geom,"
+                   "{2},{3},{4})) AS geom, Box3D(ST_Translate(geom,"
+                   "{2},{3},{4})) AS box from {0}"
+                   " WHERE tile={1}"
+                   .format(table, tile, -offset[0], -offset[1],
+                           -offset[2]))
+
+        res = cls.query_asdict(sql)
+
+        return res
+
+    @classmethod
+    def tile_2_5D(cls, city, offset, tile, isFeature, layer, representation):
         """Returns a list of geometries in string representation.
 
         Parameters
@@ -120,34 +168,37 @@ class Session():
         city : str
         offset : list
             [x, y, z] as float
-        tile : str
-            '6/22/28'
+        tile : int
+        isFeature : boolean
+        layer : str
+            'buildings'
         representation : str
             'lod1'
 
         Returns
         -------
         res : list
-            List of OrderedDict with a 'gid' and a 'geom' key.
+            List of OrderedDict with a 'gid' (or 'tile'), 'zmin', 'zmax' and a 'geom' key.
 
             The 'geom' key is defined in geojson format such as
             '{"type":"", "bbox":"","coordinates":[[[[x0, y0, z0], ...]]]}'
         """
-        # TODO temp
+
         rep = CitiesConfig.representation(city, layer, representation)
-        table = rep["tablename"]
-        if rep["datatype"] == "2.5D":
-            # TODO either generate proper gid or remove as gid
-            sql = ("SELECT tile AS gid, zmin, zmax, ST_AsGeoJSON(geom,"
-                   "2, 1) AS geom from {0}"
-                   " WHERE tile='{1}'"
-                   .format(table, tile, -offset[0], -offset[1],
+        if isFeature:
+            # TODO optimise
+            table = rep["featuretable"]
+            featureTable = CitiesConfig.featureTable(city, layer)
+            sql = ("WITH t AS (SELECT gid FROM {1} WHERE tile='{2}')"
+                   "SELECT {0}.gid, zmin, zmax, ST_AsGeoJSON(geom,"
+                   "2, 1) AS geom from {0} JOIN t ON {0}.gid=t.gid"
+                   .format(table, featureTable, tile, -offset[0], -offset[1],
                            -offset[2]))
-        elif rep["datatype"] == "polyhedralsurface":
-            sql = ("SELECT gid, ST_AsBinary(ST_Translate(geom,"
-                   "{2},{3},{4})) AS geom, Box3D(ST_Translate(geom,"
-                   "{2},{3},{4})) AS box from {0}"
-                   " WHERE tile='{1}'"
+        else:
+            table = rep["tiletable"]
+            sql = ("SELECT tile, zmin, zmax, ST_AsGeoJSON(geom,"
+                   "2, 1) AS geom from {0}"
+                   " WHERE tile={1}"
                    .format(table, tile, -offset[0], -offset[1],
                            -offset[2]))
 

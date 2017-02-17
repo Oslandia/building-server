@@ -35,8 +35,17 @@ class CitiesConfig(object):
         return cls.cities.get(city, {}).get('tiles', None)
 
     @classmethod
+    def featureTable(cls, city, layer):
+        return cls.cities.get(city, {}).get('layers', {}).get(layer, {})\
+            .get('features', None)
+
+    @classmethod
     def tileHierarchy(cls, city):
         return cls.cities.get(city, {}).get('hierarchy', None)
+
+    @classmethod
+    def scales(cls, city):
+        return cls.cities.get(city, {}).get('scales', None)
 
 
 class Box3D(object):

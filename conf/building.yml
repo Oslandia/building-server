@@ -12,18 +12,20 @@ cities:
     extent: [[1837816.94334,5170036.4587], [1847692.32501,5178412.82698]]
     srs: "EPSG:3946"
     hierarchy: "test.hierarchy"
+    scales: ["city", "neighbourhood", "block", "building"]
     tiles: "test.tiles"
     layers:
       buildings:
-        tablename: "test.building_tiles"
+        features: "test.buildings"
         attributes: []
         representations:
           lod2:
-            tablename: "test.lod2"
+            featuretable: "test.lod2"
             datatype: "polyhedralsurface"
             detail: 2
 
           lod1:
-            tablename: "test.lod1"
+            tiletable: "test.lod1"
+            featuretable: "test.lod1_buildings"
             datatype: "2.5D"
             detail: 1

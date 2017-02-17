@@ -84,7 +84,8 @@ class APIGetAttribute(Resource):
 gettile_parser = reqparse.RequestParser()
 gettile_parser.add_argument('city', type=str, required=True)
 gettile_parser.add_argument('layer', type=str, required=True)
-gettile_parser.add_argument('tile', type=str, required=True)
+gettile_parser.add_argument('tile', type=int, required=True)
+gettile_parser.add_argument('depth', type=int, required=True)
 gettile_parser.add_argument('representation', type=str, required=True)
 @api.route("/getTile")
 class APIGetTile(Resource):

@@ -45,6 +45,8 @@ class SceneBuilder():
     def build(cls, cursor, city, layer, representations):
         tileTable = utils.CitiesConfig.tileTable(city)
         tileHierarchy = utils.CitiesConfig.tileHierarchy(city)
+        featureTable = utils.CitiesConfig.featureTable(city, layer)
+        maxDepth = len(utils.CitiesConfig.scales(city)) - 1
 
         reps = []
         for i in range(0, len(representations)):
@@ -59,7 +61,7 @@ class SceneBuilder():
         nodes = {}
         lvl0Nodes = []
         lvl0Tiles = []
-        query = "SELECT gid, depth, bbox FROM {0}".format(tileTable)
+        query = "SELECT tile, depth, bbox FROM {0}".format(tileTable)
         cursor.execute(query)
         rows = cursor.fetchall()
         for r in rows:
@@ -70,23 +72,32 @@ class SceneBuilder():
             # Go through every representations in order of increasing detail
             existingRepresentations = []
             for rep in reps:
-                query = "SELECT tile FROM {0} WHERE tile='{1}'".format(rep['tablename'], r[0])
-                cursor.execute(query)
-                if cursor.rowcount != 0:
-                    score = (1 + depth) * rep['weight'] #TODO: Temp
-                    existingRepresentations.append((rep["name"], score, box))
+                if 'tiletable' in rep:
+                    query = "SELECT tile FROM {0} WHERE tile={1} LIMIT 1".format(rep['tiletable'], r[0])
+                    cursor.execute(query)
+                    if cursor.rowcount != 0:
+                        score = (1 + depth) * rep['weight'] #TODO: Temp
+                        existingRepresentations.append((rep["name"], score, box, depth))
+
+                if depth == maxDepth - 1:
+                    if 'featuretable' in rep:
+                        query = "WITH t AS (SELECT gid FROM {1} WHERE tile={2}) SELECT {0}.gid FROM {0} INNER JOIN t ON {0}.gid=t.gid LIMIT 1".format(rep['featuretable'], featureTable, r[0])
+                        cursor.execute(query)
+                        if cursor.rowcount != 0:
+                            score = (1 + depth + 1) * rep['weight'] #TODO: Temp
+                            existingRepresentations.append((rep["name"], score, box, depth + 1))
 
             # Linking node's representations
             nodeRep = []
             for i, rep in enumerate(existingRepresentations):
-                node = Node(r[0], depth, rep[0], rep[1], rep[2]);
+                node = Node(r[0], rep[3], rep[0], rep[1], rep[2]);
                 nodeRep.append(node)
                 if i != 0:
                     nodeRep[i-1].children.append(node)
                     node.parent = nodeRep[i-1]
             nodes[r[0]] = nodeRep
 
-            if r[1] == 0:
+            if depth == 0:
                 lvl0Tiles.append(r[0])
 
 
@@ -183,7 +194,7 @@ class SceneBuilder():
     def pushUp(cls, lvl0Nodes):
         newLvl0Nodes = []
         for root in lvl0Nodes:
-            lvl0NodeIsReplace = False
+            lvl0NodeIsReplaced = False
 
             toRemove = []
             toCombine = {}
@@ -215,7 +226,7 @@ class SceneBuilder():
                     # All children were moved upwards : replace node
                     if n.parent == None:
                         # No parent: these are new lvl0 nodes
-                        lvl0NodeIsReplace = True
+                        lvl0NodeIsReplaced = True
                         for combiners in toCombine[n]:
                             newLvl0Nodes.append(combiners)
                     else:
@@ -226,7 +237,7 @@ class SceneBuilder():
                     # Combine TODO: combinees not handled yet!
                     for combiners in toCombine[n]:
                         n.combinees.append(combiners)
-            if not lvl0NodeIsReplace:
+            if not lvl0NodeIsReplaced:
                 newLvl0Nodes.append(root)
 
         return newLvl0Nodes
@@ -267,34 +278,8 @@ class SceneBuilder():
         }
         if node.representation != None:
             tile["content"] = {
-                "url": "getTile?city={0}&layer={1}&tile={2}&representation={3}".format(city, layer, node.id, node.representation)
+                "url": "getTile?city={0}&layer={1}&tile={2}&representation={3}&depth={4}".format(city, layer, node.id, node.representation, node.depth)
             }
         else:
             tile["refine"] = "add"
         return tile
-
-"""
-if __name__ == '__main__':
-    args = sys.argv;
-    if len(args) <= 1:
-        exit("No city name provided")
-
-    cityName = args[1];
-    if cityName not in settings.CITIES:
-        exit("City " + cityName + " is not defined in settings.py")
-
-    city = settings.CITIES[cityName]
-    if "tablename" not in city or "extent" not in city or "maxtilesize" not in city:
-        exit(cityName + " not properly defined")
-
-
-
-    conn_string = "host='%s' dbname='%s' user='%s' password='%s' port='%s'" % (settings.DB_INFOS['host'], settings.DB_INFOS['dbname'], settings.DB_INFOS['user'], settings.DB_INFOS['password'], settings.DB_INFOS['port'])
-    connection = psycopg2.connect(conn_string)
-    cursor = connection.cursor()
-
-    initDB(cursor, city)
-    connection.commit()
-    cursor.close()
-    connection.close()
-"""
