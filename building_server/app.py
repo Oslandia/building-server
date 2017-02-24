@@ -101,6 +101,9 @@ getscene_parser.add_argument('city', type=str, required=True)
 getscene_parser.add_argument('layer', type=str, required=True)
 getscene_parser.add_argument('representations', type=str, required=True)
 getscene_parser.add_argument('weights', type=str, required=True)
+getscene_parser.add_argument('maxdepth', type=int, required=False)
+getscene_parser.add_argument('tile', type=int, required=False)
+getscene_parser.add_argument('depth', type=int, required=False)
 # TODO: customisation parameters
 @api.route("/getScene")
 class APIGetScene(Resource):

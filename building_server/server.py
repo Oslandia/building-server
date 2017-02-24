@@ -272,7 +272,15 @@ class GetScene(object):
         representations = []
         for i in range(0, len(representationList)):
             representations.append( (representationList[i], float(weightList[i])) )
-        json = SceneBuilder.build(Session.db.cursor(), city, layer, representations)
+
+        # optional arguments
+        maxDepth = args.get('maxdepth', None)
+        tile = args.get('tile', None)
+        depth = args.get('depth', None)
+        if (tile == None and depth != None) or (tile != None and depth == None):
+            return Response("Tile and depth should either both be defined or both not defined", 400)
+
+        json = SceneBuilder.build(Session.db.cursor(), city, layer, representations, maxDepth, tile, depth)
 
         resp = Response(json)
         resp.headers['Access-Control-Allow-Origin'] = '*'

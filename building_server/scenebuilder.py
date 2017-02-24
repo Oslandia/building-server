@@ -42,11 +42,14 @@ def walk(node):
 class SceneBuilder():
 
     @classmethod
-    def build(cls, cursor, city, layer, representations):
+    def build(cls, cursor, city, layer, representations, maxDepth, tile, startingDepth):
         tileTable = utils.CitiesConfig.tileTable(city)
         tileHierarchy = utils.CitiesConfig.tileHierarchy(city)
         featureTable = utils.CitiesConfig.featureTable(city, layer)
-        maxDepth = len(utils.CitiesConfig.scales(city)) - 1
+        cityDepth = len(utils.CitiesConfig.scales(city)) - 1
+        startingDepth = 0 if startingDepth == None else startingDepth
+        tilesetContinuation = (tile != None)
+
 
         reps = []
         for i in range(0, len(representations)):
@@ -57,14 +60,50 @@ class SceneBuilder():
 
         reps = sorted(reps,  key=lambda e: e["detail"])
 
-        # Calculer le score de chaque représentation
+        depthCondition = ""
+        if maxDepth != None or startingDepth != None:
+            depthCondition = " WHERE"
+            if maxDepth != None:
+                depthCondition += " depth<={0}".format(maxDepth)
+                if startingDepth != None:
+                    condition += " AND"
+            if startingDepth != None:
+                depthCondition += " depth>={0}".format(startingDepth)
+
+        # Build hierarchy
+        if depthCondition == "":
+            query = "SELECT tile, child FROM {0}".format(tileHierarchy)
+        else:
+            query = "SELECT {0}.tile, child FROM {0} JOIN {1} ON {0}.child={1}.tile".format(tileHierarchy, tileTable)
+            query += depthCondition
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        tree = {}
+        for r in rows:
+            if r[0] not in tree:
+                tree[r[0]] = []
+            tree[r[0]].append(r[1])
+
+        def filterTiles(tree, tile, tileList):
+            if tile in tree:
+                for child in tree[tile]:
+                    tileList[child] = True;
+                    filterTiles(tree, child, tileList)
+
+        if tilesetContinuation:
+            tileList = {}
+            tileList[tile] = True;
+            filterTiles(tree, tile, tileList)
+
+        # Go through every tile
         nodes = {}
         lvl0Nodes = []
         lvl0Tiles = []
         query = "SELECT tile, depth, bbox FROM {0}".format(tileTable)
+        query += depthCondition
         cursor.execute(query)
         rows = cursor.fetchall()
-        for r in rows:
+        for r in rows if tile == None else [t for t in rows if t[0] in tileList]:
             depth = r[1]
             if r[2] != None:
                 box = utils.Box3D(r[2])
@@ -79,7 +118,7 @@ class SceneBuilder():
                         score = (1 + depth) * rep['weight'] #TODO: Temp
                         existingRepresentations.append((rep["name"], score, box, depth))
 
-                if depth == maxDepth - 1:
+                if depth == cityDepth - 1 and (maxDepth == None or depth + 1 <= maxDepth):
                     if 'featuretable' in rep:
                         query = "WITH t AS (SELECT gid FROM {1} WHERE tile={2}) SELECT {0}.gid FROM {0} INNER JOIN t ON {0}.gid=t.gid LIMIT 1".format(rep['featuretable'], featureTable, r[0])
                         cursor.execute(query)
@@ -97,19 +136,8 @@ class SceneBuilder():
                     node.parent = nodeRep[i-1]
             nodes[r[0]] = nodeRep
 
-            if depth == 0:
+            if depth == startingDepth:
                 lvl0Tiles.append(r[0])
-
-
-        # Build hierarchy
-        query = "SELECT tile, child FROM {0}".format(tileHierarchy)
-        cursor.execute(query)
-        rows = cursor.fetchall()
-        tree = {}
-        for r in rows:
-            if r[0] not in tree:
-                tree[r[0]] = []
-            tree[r[0]].append(r[1])
 
         # Linking nodes
         lvl0Nodes = []
@@ -255,7 +283,7 @@ class SceneBuilder():
     def to3dTiles(cls, root, city, layer):
         tiles = {
             "asset": {"version" : "1.0"},
-            "geometricError": 500,
+            "geometricError": 500,  # TODO: should reflect startingDepth
             "root" : cls.to3dTiles_r(root, city, layer)
         }
         return json.dumps(tiles)
