@@ -12,11 +12,12 @@ from . import utils
 
 class Node(object):
 
-    def __init__(self, id, depth, representation, weight, box):
+    def __init__(self, id, depth, representation, weight, box, isLink):
         self.id = id
         self.depth = depth
         self.representation = representation
         self.weight = weight
+        self.isLink = isLink
         self.children = []
         self.parent = None
         self.combinees = []
@@ -49,13 +50,15 @@ class SceneBuilder():
         cityDepth = len(utils.CitiesConfig.scales(city)) - 1
         startingDepth = 0 if startingDepth == None else startingDepth
         tilesetContinuation = (tile != None)
+        maxDepth = None if maxDepth == cityDepth - 1 else maxDepth  # maxDepth is pointless in this case (no speed gain and negligible size reduction)
+        customisationString = "representations={0}&weights={1}".format(",".join([a[0] for a in representations]), ",".join([str(a[1]) for a in representations]))
 
 
         reps = []
-        for i in range(0, len(representations)):
-            r = utils.CitiesConfig.representation(city, layer, representations[i][0])
-            r["name"] = representations[i][0]
-            r["weight"] = representations[i][1]
+        for rep in representations:
+            r = utils.CitiesConfig.representation(city, layer, rep[0])
+            r["name"] = rep[0]
+            r["weight"] = rep[1]
             reps.append(r)
 
         reps = sorted(reps,  key=lambda e: e["detail"])
@@ -64,9 +67,9 @@ class SceneBuilder():
         if maxDepth != None or startingDepth != None:
             depthCondition = " WHERE"
             if maxDepth != None:
-                depthCondition += " depth<={0}".format(maxDepth)
+                depthCondition += " depth<={0}".format(maxDepth + 1)
                 if startingDepth != None:
-                    condition += " AND"
+                    depthCondition += " AND"
             if startingDepth != None:
                 depthCondition += " depth>={0}".format(startingDepth)
 
@@ -116,20 +119,19 @@ class SceneBuilder():
                     cursor.execute(query)
                     if cursor.rowcount != 0:
                         score = (1 + depth) * rep['weight'] #TODO: Temp
-                        existingRepresentations.append((rep["name"], score, box, depth))
+                        existingRepresentations.append(Node(r[0], depth, rep["name"], score, box, False if maxDepth == None else depth == maxDepth + 1))
 
-                if depth == cityDepth - 1 and (maxDepth == None or depth + 1 <= maxDepth):
+                if depth + 1 == cityDepth and (maxDepth == None or depth + 1 <= maxDepth):
                     if 'featuretable' in rep:
                         query = "WITH t AS (SELECT gid FROM {1} WHERE tile={2}) SELECT {0}.gid FROM {0} INNER JOIN t ON {0}.gid=t.gid LIMIT 1".format(rep['featuretable'], featureTable, r[0])
                         cursor.execute(query)
                         if cursor.rowcount != 0:
                             score = (1 + depth + 1) * rep['weight'] #TODO: Temp
-                            existingRepresentations.append((rep["name"], score, box, depth + 1))
+                            existingRepresentations.append(Node(r[0], depth + 1, rep["name"], score, box, False))
 
             # Linking node's representations
             nodeRep = []
-            for i, rep in enumerate(existingRepresentations):
-                node = Node(r[0], rep[3], rep[0], rep[1], rep[2]);
+            for i, node in enumerate(existingRepresentations):
                 nodeRep.append(node)
                 if i != 0:
                     nodeRep[i-1].children.append(node)
@@ -181,10 +183,10 @@ class SceneBuilder():
             box = 'Box3D({0},{1},{2},{3},{4},{5})'.format(*(pmin+pmax))
             box = utils.Box3D(box)
 
-            root = Node(-1, -1, None, 0, box)
+            root = Node(-1, -1, None, 0, box, False)
             root.children = lvl0Nodes
 
-        return cls.to3dTiles(root, city, layer)
+        return cls.to3dTiles(root, city, layer, customisationString)
 
     @classmethod
     def addChildren(cls, tree, allNodes, nodeId):
@@ -280,16 +282,16 @@ class SceneBuilder():
             return node
 
     @classmethod
-    def to3dTiles(cls, root, city, layer):
+    def to3dTiles(cls, root, city, layer, customisationString):
         tiles = {
             "asset": {"version" : "1.0"},
             "geometricError": 500,  # TODO: should reflect startingDepth
-            "root" : cls.to3dTiles_r(root, city, layer)
+            "root" : cls.to3dTiles_r(root, city, layer, customisationString)
         }
         return json.dumps(tiles)
 
     @classmethod
-    def to3dTiles_r(cls, node, city, layer):
+    def to3dTiles_r(cls, node, city, layer, customisationString):
         # TODO : handle combined nodes
         (c1, c2) = node.box.corners()
         center = [(c1[i] + c2[i]) / 2 for i in range(0,3)]
@@ -302,12 +304,17 @@ class SceneBuilder():
                 "box": box
             },
             "geometricError": 200 / (node.weight + 2),# TODO
-            "children": [cls.to3dTiles_r(n, city, layer) for n in node.children]
+            "children": [cls.to3dTiles_r(n, city, layer, customisationString) for n in node.children]
         }
         if node.representation != None:
-            tile["content"] = {
-                "url": "getTile?city={0}&layer={1}&tile={2}&representation={3}&depth={4}".format(city, layer, node.id, node.representation, node.depth)
-            }
+            if node.isLink:
+                tile["content"] = {
+                    "url": "getScene?city={0}&layer={1}&tile={2}&depth={3}&{4}".format(city, layer, node.id, node.depth, customisationString)
+                }
+            else:
+                tile["content"] = {
+                    "url": "getTile?city={0}&layer={1}&tile={2}&representation={3}&depth={4}".format(city, layer, node.id, node.representation, node.depth)
+                }
         else:
             tile["refine"] = "add"
         return tile
