@@ -31,7 +31,6 @@ def superbbox():
 
 def initDB(city, conf, scoref):
     extent = conf["extent"]
-    table = conf["tablename"]
     maxTileSize = conf["maxtilesize"]
     featuresPerTile = conf["featurespertile"]
 
@@ -57,7 +56,7 @@ def initDB(city, conf, scoref):
             poly = [p0, p1, p2, p3]
 
             qt0 = time.time()
-            scores = Session.score_for_polygon(table, poly, scoref)
+            scores = Session.score_for_polygon(city, poly, scoref)
             qt += time.time() - qt0
 
             geoms = []
@@ -100,27 +99,27 @@ def initDB(city, conf, scoref):
 
     t1 = time.time()
     # create index
-    Session.add_column(table, "quadtile", "varchar(10)")
-    Session.add_column(table, "weight", "real")
+    Session.add_column(city, "quadtile", "varchar(10)")
+    Session.add_column(city, "weight", "real")
 
     for i in index:
         for j in index[i]:
-            Session.update_table(table, i, j[2], j[0])
+            Session.update_table(city, i, j[2], j[0])
 
     print("Table update time : {0}".format(time.time() - t1))
     t2 = time.time()
-    Session.create_index(table, "quadtile")
+    Session.create_index(city, "quadtile")
     print("Index creation time : {0}".format(time.time() - t2))
 
     # create bbox table
     t3 = time.time()
-    Session.create_bbox_table(table)
+    Session.create_bbox_table(city)
 
     for i in bboxIndex:
         b = bboxIndex[i]
         bbox_str = str(b[0][0]) + " " + str(b[0][1]) + " " + str(b[0][2]) \
             + "," + str(b[1][0]) + " " + str(b[1][1]) + " " + str(b[1][2])
-        Session.insert_into_bbox_table(table, i, bbox_str)
+        Session.insert_into_bbox_table(city, i, bbox_str)
 
     print("Bounding box table creation time : {0}".format(time.time() - t3))
 
@@ -229,10 +228,9 @@ if __name__ == '__main__':
     utils.CitiesConfig.init(str(args.cfg))
 
     # reinitialize the database
-    tablename = cityconf['tablename']
-    Session.drop_column(tablename, "quadtile")
-    Session.drop_column(tablename, "weight")
-    Session.drop_bbox_table(tablename)
+    Session.drop_column(args.city, "quadtile")
+    Session.drop_column(args.city, "weight")
+    Session.drop_bbox_table(args.city)
 
     # fill the database
     initDB(args.city, cityconf, args.score)

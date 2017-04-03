@@ -191,7 +191,7 @@ class Session():
         sql = ("SELECT gid, Box3D(geom), {0} as \"score\" FROM {1} "
                "WHERE (geom && 'POLYGON(({2}, {3}, {4}, {5}, {2}))'::geometry)"
                " ORDER BY score DESC"
-               .format(scoreFunction, city, pol[0], pol[1], pol[2], pol[3]))
+               .format(scoreFunction, CitiesConfig.table(city), pol[0], pol[1], pol[2], pol[3]))
 
         return cls.query_asdict(sql)
 
@@ -249,7 +249,7 @@ class Session():
         """
 
         sql = ("CREATE INDEX tileIdx_{0} on {1} ({2})"
-               .format(CitiesConfig.table(city).replace(".", ""), city,
+               .format(CitiesConfig.table(city).replace(".", ""), CitiesConfig.table(city),
                        column))
         cls.db.cursor().execute(sql)
 
