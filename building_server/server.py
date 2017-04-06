@@ -7,6 +7,7 @@ from . import utils
 from .database import Session
 from .transcode import toglTF
 from .utils import CitiesConfig
+import json
 
 
 class GetGeometry(object):
@@ -18,14 +19,17 @@ class GetGeometry(object):
         if outputFormat:
             if outputFormat.lower() == "geojson":
                 geometry = self._as_geojson(args)
+                contentType = 'text/plain'
             else:
                 geometry = self._as_glTF(args)
+                contentType = 'application/octet-stream'
         else:
             geometry = self._as_glTF(args)
+            contentType = 'application/octet-stream'
 
         resp = Response(geometry)
         resp.headers['Access-Control-Allow-Origin'] = '*'
-        resp.headers['Content-Type'] = 'text/plain'
+        resp.headers['Content-Type'] = contentType
 
         return resp
 
@@ -62,15 +66,7 @@ class GetGeometry(object):
             f = utils.Feature(geom['gid'], properties, geom['geom'])
             feature_collection.add(f)
 
-        # build children bboxes
-        bboxes_str = self._children_bboxes(city, tile)
-
-        # build the resulting json
-        geometries = utils.Property("geometries", feature_collection.geojson())
-        json = ('{{ {0}, "tiles":[{1}]}}'
-                .format(geometries.geojson(), bboxes_str))
-
-        return json
+        return feature_collection.geojson()
 
     def _as_glTF(self, args):
         # retrieve arguments
@@ -80,11 +76,10 @@ class GetGeometry(object):
         # get geom as binary
         geombin = Session.tile_geom_binary(city, tile)
 
-        json = ""
+        output = ""
         if not geombin:
-            json = struct.pack('4sIIII', b"glTF", 1, 20, 0, 0)  # empty bglTF
-            json += b'{"tiles":[]}'
-            json = json.decode("utf-8")
+            output = struct.pack('4sIIII', b"glTF", 1, 20, 0, 0)  # empty bglTF
+            output += b'{"tiles":[]}'
         else:
             offset = Session.offset(city, tile)
 
@@ -92,36 +87,9 @@ class GetGeometry(object):
             data = []
             for geom in geombin:
                 data.append((geom['binary'], geom['box3d']))
-            json = toglTF(data, True, offset)
+            output = toglTF(data, True, offset)
 
-            # build children bboxes
-            bboxes_str = self._children_bboxes(city, tile)
-
-            # build the resulting json
-            json = ('{0}, "tiles":[{1}]}}'
-                    .format(json, bboxes_str))
-
-        return json
-
-    def _children_bboxes(self, city, tile):
-
-        [z, y, x] = map(int, tile.split("/"))
-        q0 = str(z+1) + "/" + str(2*y) + "/" + str(2*x)
-        q1 = str(z+1) + "/" + str(2*y+1) + "/" + str(2*x)
-        q2 = str(z+1) + "/" + str(2*y) + "/" + str(2*x+1)
-        q3 = str(z+1) + "/" + str(2*y+1) + "/" + str(2*x+1)
-
-        bboxs = Session.bbox_for_quadtiles(city, [q0, q1, q2, q3])
-        lbb = []
-        for bbox in bboxs:
-            b = utils.Box3D(bbox['bbox'])
-            qstr = ('{{"id" : "{0}", {1}}}'
-                    .format(bbox['quadtile'], b.geojson()))
-            lbb.append(qstr)
-
-        bboxes_str = ', '.join(lbb)
-
-        return bboxes_str
+        return output
 
 
 class GetCities(object):
@@ -140,26 +108,102 @@ class GetCity(object):
 
     def run(self, args):
         city = args['city']
-        tiles = Session.tiles_for_level(city, 0)
+        if 'format' in args:
+            dataFormat = args['format']
+        else:
+            dataFormat = 'gltf'
 
-        json = ""
+        tiles = Session.get_all_tiles(city)
+        lvl0Tiles = Session.tiles_for_level(city, 0)
+
+        lvl0Nodes = []
+        for tile in lvl0Tiles:
+            node = {
+                'box': utils.Box3D(tile['bbox']),
+                'id': tile['quadtile'],
+                'depth': 0,
+                'children': []
+            }
+            lvl0Nodes.append(node)
+
+        if len(lvl0Tiles) == 1:
+            root = lvl0Nodes[0]
+        else:
+            pmin = [float("inf"), float("inf"), float("inf")]
+            pmax = [-float("inf"), -float("inf"), -float("inf")]
+            for n in lvl0Nodes:
+                corners = n['box'].corners()
+                pmin = [min(pmin[i], corners[0][i]) for i in range(0,3)]
+                pmax = [max(pmax[i], corners[1][i]) for i in range(0,3)]
+            box = 'Box3D({0},{1},{2},{3},{4},{5})'.format(*(pmin+pmax))
+            box = utils.Box3D(box)
+            root = {
+                'box': box,
+                'depth': 0,
+                'children': lvl0Nodes
+            }
+
+        hierarchy = {}
         for tile in tiles:
-            b = utils.Box3D(tile['bbox'])
-            p = utils.Property("id", '"{0}"'.format(tile['quadtile']))
+            hierarchy[tile['quadtile']] = tile['bbox']
 
-            tilejson = ('{{ {0}, {1} }}'
-                        .format(p.geojson(), b.geojson()))
-            if json:
-                json = "{0}, {1}".format(json, tilejson)
-            else:
-                json = tilejson
-        json = '{{"tiles":[{0}]}}'.format(json)
+        nodeQueue = []
+        nodeQueue = nodeQueue + lvl0Nodes
+        while len(nodeQueue) != 0:
+            parent = nodeQueue.pop(0)
+            id = parent['id']
+            [z, y, x] = map(int, id.split("/"))
+            ids = [str(z+1) + "/" + str(2*y) + "/" + str(2*x),
+                   str(z+1) + "/" + str(2*y+1) + "/" + str(2*x),
+                   str(z+1) + "/" + str(2*y) + "/" + str(2*x+1),
+                   str(z+1) + "/" + str(2*y+1) + "/" + str(2*x+1)]
 
-        resp = Response(json)
+            for t in ids:
+                if t in hierarchy:
+                    node = {
+                        'box': utils.Box3D(hierarchy[t]),
+                        'id': t,
+                        'depth': z + 1,
+                        'children': []
+                    }
+                    parent['children'].append(node)
+                    nodeQueue.append(node)
+
+
+        resp = Response(self._to_3dtiles(root, city, dataFormat))
         resp.headers['Access-Control-Allow-Origin'] = '*'
         resp.headers['Content-Type'] = 'text/plain'
-
         return resp
+
+    def _to_3dtiles(self, root, city, dataFormat):
+        tiles = {
+            "asset": {"version" : "1.0"},
+            "geometricError": 500, # TODO
+            "root" : self._to_3dtiles_r(root, city, dataFormat)
+        }
+        return json.dumps(tiles)
+
+    def _to_3dtiles_r(self, node, city, dataFormat):
+        (c1, c2) = node['box'].corners()
+        center = [(c1[i] + c2[i]) / 2 for i in range(0,3)]
+        xAxis = [c2[0] - c1[0], 0, 0]
+        yAxis = [0, c2[1] - c1[1], 0]
+        zAxis = [0, 0, c2[2] - c1[2]]
+        box = center + xAxis + yAxis + zAxis
+        tile = {
+            "boundingVolume": {
+                "box": box
+            },
+            "geometricError": 500 / (node['depth'] + 1), # TODO
+            "children": [self._to_3dtiles_r(n, city, dataFormat) for n in node['children']],
+            "refine": "add"
+        }
+        if 'id' in node:
+            tile["content"] = {
+                "url": "getGeometry?city={0}&tile={1}&format={2}".format(city, node['id'], dataFormat)
+            }
+
+        return tile
 
 
 class GetAttribute(object):

@@ -172,6 +172,24 @@ class Session():
         return cls.query_asdict(sql)
 
     @classmethod
+    def get_all_tiles(cls, city):
+        """Returns all tiles defined in the database
+
+        Parameters
+        ----------
+        city : str
+
+        Returns
+        -------
+        res : list
+            List of OrderedDict with 'quadtile' and 'bbox' as keys
+        """
+
+        sql = ("SELECT quadtile, bbox FROM {0}_bbox"
+               .format(CitiesConfig.table(city)))
+        return cls.query_asdict(sql)
+
+    @classmethod
     def score_for_polygon(cls, city, pol, scoreFunction):
         """Returns scores
 

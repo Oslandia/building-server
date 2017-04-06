@@ -52,6 +52,7 @@ class APIGetCities(Resource):
 # getCity
 getcity_parser = reqparse.RequestParser()
 getcity_parser.add_argument('city', type=str, required=True)
+getcity_parser.add_argument('format', type=str, required=False)
 
 
 @api.route("/getCity")
