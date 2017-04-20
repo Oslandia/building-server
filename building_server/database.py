@@ -76,7 +76,7 @@ class Session():
         return res
 
     @classmethod
-    def tile_geom_binary(cls, city, tile):
+    def tile_geom_binary(cls, city, tile, offset):
         """Returns a list of geometries in binary representation
 
         Parameters
@@ -91,8 +91,10 @@ class Session():
             List of OrderedDict with 'box3D' and 'binary' keys.
         """
 
-        sql = ("SELECT Box3D(geom), ST_AsBinary(geom) as binary from {0}"
-               " where quadtile='{1}'".format(CitiesConfig.table(city), tile))
+        sql = ("SELECT Box3D(geom) AS box, ST_AsBinary(ST_Translate(geom,"
+               "{2},{3},{4})) AS geom from {0}"
+               " where quadtile='{1}'".format(CitiesConfig.table(city), tile,
+                    -offset[0], -offset[1], -offset[2]))
         res = cls.query_asdict(sql)
 
         return res

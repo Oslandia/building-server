@@ -5,9 +5,10 @@ import struct
 from flask import Response
 from . import utils
 from .database import Session
-from .transcode import toglTF
 from .utils import CitiesConfig
+from py3dtiles import GlTF, B3dm
 import json
+import numpy as np
 
 
 class GetGeometry(object):
@@ -21,10 +22,10 @@ class GetGeometry(object):
                 geometry = self._as_geojson(args)
                 contentType = 'text/plain'
             else:
-                geometry = self._as_glTF(args)
+                geometry = self._as_b3dm(args)
                 contentType = 'application/octet-stream'
         else:
-            geometry = self._as_glTF(args)
+            geometry = self._as_b3dm(args)
             contentType = 'application/octet-stream'
 
         resp = Response(geometry)
@@ -42,11 +43,8 @@ class GetGeometry(object):
         if args['attributes']:
             attributes = args['attributes'].split(',')
 
-        # get offset in database
-        offset = Session.offset(city, tile)
-
         # get geometries for a specific tile in database
-        geomsjson = Session.tile_geom_geojson(city, offset, tile)
+        geomsjson = Session.tile_geom_geojson(city, [0,0,0], tile)
 
         # build a features collection with extra properties if necessary
         feature_collection = utils.FeatureCollection()
@@ -68,28 +66,37 @@ class GetGeometry(object):
 
         return feature_collection.geojson()
 
-    def _as_glTF(self, args):
+    def _as_b3dm(self, args):
         # retrieve arguments
         city = args['city']
         tile = args['tile']
 
         # get geom as binary
-        geombin = Session.tile_geom_binary(city, tile)
+        offset = Session.offset(city, tile)
+        geombin = Session.tile_geom_binary(city, tile, offset)
 
         output = ""
         if not geombin:
-            output = struct.pack('4sIIII', b"glTF", 1, 20, 0, 0)  # empty bglTF
-            output += b'{"tiles":[]}'
+            gltf = struct.pack('4sIIII', b"glTF", 1, 20, 0, 0)  # empty bglTF
+            gltf += b'{"tiles":[]}'
         else:
-            offset = Session.offset(city, tile)
-
-            # prepare data for toglTF function and run it
-            data = []
+            wkbs = []
+            boxes = []
+            transform = np.array([
+                [1,0,0,offset[0]],
+                [0,1,0,offset[1]],
+                [0,0,1,offset[2]],
+                [0,0,0,1]], dtype=float)
+            transform = transform.flatten('F')
             for geom in geombin:
-                data.append((geom['binary'], geom['box3d']))
-            output = toglTF(data, True, offset)
+                wkbs.append(geom['geom'])
+                box = utils.Box3D(geom['box'])
+                boxes.append(box.asarray())
+            gltf = GlTF.from_wkb(wkbs, boxes, transform)
 
-        return output
+        b3dm = B3dm.from_glTF(gltf).to_array().tostring()
+
+        return b3dm
 
 
 class GetCities(object):
@@ -111,7 +118,7 @@ class GetCity(object):
         if 'format' in args:
             dataFormat = args['format']
         else:
-            dataFormat = 'gltf'
+            dataFormat = 'b3dm'
 
         tiles = Session.get_all_tiles(city)
         lvl0Tiles = Session.tiles_for_level(city, 0)

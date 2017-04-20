@@ -47,6 +47,8 @@ class Box3D(object):
         p = Property("bbox", self.aslist())
         return p.geojson()
 
+    def asarray(self):
+        return [[float(n) for n in s.split(" ")] for s in self.str[6:len(self.str)-1].split(",")]
 
 class Property(object):
 
