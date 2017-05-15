@@ -205,10 +205,10 @@ class GetFeature(object):
         representation = args['representation']
         layer = args['layer']
 
-        offset = [0,0,0] # TODO: needs changing
 
         rep = utils.CitiesConfig.representation(city, layer, representation)
         if rep['datatype'] == 'polyhedralsurface':
+            offset = Session.feature_center(city, id, layer, representation)
             geoms = Session.feature_polyhedral(city, offset, id, layer, representation)
             wkbs = []
             boxes = []
@@ -244,10 +244,6 @@ class GetTile(object):
         isFeature = (depth == len(CitiesConfig.scales(city)) - 1)
         gidOrTile = 'gid' if isFeature else 'tile'
 
-        # get offset in database
-        # WARNING: z offset is always 0
-        offset = Session.offset2(city, tile)
-
         # build a features collection with extra properties if necessary
         feature_collection = utils.FeatureCollection()
         feature_collection.srs = utils.CitiesConfig.cities[city]['srs']
@@ -255,6 +251,7 @@ class GetTile(object):
         rep = utils.CitiesConfig.representation(city, layer, representation)
 
         if rep['datatype'] == 'polyhedralsurface':
+            offset = Session.tile_center(city, tile, layer, representation)
             geoms = Session.tile_polyhedral(city, offset, tile, isFeature, layer, representation, without)
             wkbs = []
             boxes = []
@@ -274,6 +271,8 @@ class GetTile(object):
             resp.headers['Content-Type'] = 'application/octet-stream'
         elif rep['datatype'] == '2.5D':
             # TODO: use 3d-tiles formats
+            # TODO: use offset
+            offset = [0, 0, 0]
             geoms = Session.tile_2_5D(city, offset, tile, isFeature, layer, representation, without)
             for geom in geoms:
                 properties = utils.PropertyCollection()

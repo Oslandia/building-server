@@ -45,41 +45,49 @@ class Session():
 
         return offset
 
-    # TODO: merge offset and offset2
     @classmethod
-    def offset2(cls, city, tile):
-        """Returns a 3D offset for a specific tile
-
-        Parameters
-        ----------
-        city : str
-        tile : str
-            '6/22/28'
-
-        Returns
-        -------
-        offset : list
-            [x, y, z] as float or None if no tile is found
-        """
-
-        table = CitiesConfig.tileTable(city)
-        sql = ("SELECT Box2D(footprint) AS box from {0} WHERE tile = '{1}'"
-               .format(table, tile))
+    def tile_center(cls, city, tile, layer, representation):
+        rep = CitiesConfig.representation(city, layer, representation)
+        table = rep["featuretable"]
+        featureTable = CitiesConfig.featureTable(city, layer)
+        sql = ("WITH t AS (SELECT gid FROM {1} WHERE tile='{2}')"
+               "SELECT Box3D(geom) FROM {0} JOIN t ON {0}.gid=t.gid"
+               .format(table, featureTable, tile))
         res = cls.query_aslist(sql)
 
-        offset = None
+        center = None
         if res:
             o = res[0]
-            box2D = o[4:len(o)-1]   # remove "BOX(" and ")"
-            part = box2D.split(',')
+            box3D = o[6:len(o)-1]   # remove "BOX3D(" and ")"
+            part = box3D.split(',')
             p1 = part[0].split(' ')
             p2 = part[1].split(' ')
-            offset = [
+            center = [
                 (float(p1[0]) + float(p2[0])) / 2,
                 (float(p1[1]) + float(p2[1])) / 2,
-                0]
+                (float(p1[2]) + float(p2[2])) / 2 ]
 
-        return offset
+        return center
+
+    @classmethod
+    def feature_center(cls, city, gid, layer, representation):
+        rep = CitiesConfig.representation(city, layer, representation)
+        sql = "SELECT Box3D(geom) FROM {0} WHERE gid={1}".format(rep["featuretable"], gid)
+        res = cls.query_aslist(sql)
+
+        center = None
+        if res:
+            o = res[0]
+            box3D = o[6:len(o)-1]   # remove "BOX3D(" and ")"
+            part = box3D.split(',')
+            p1 = part[0].split(' ')
+            p2 = part[1].split(' ')
+            center = [
+                (float(p1[0]) + float(p2[0])) / 2,
+                (float(p1[1]) + float(p2[1])) / 2,
+                (float(p1[2]) + float(p2[2])) / 2 ]
+
+        return center
 
     @classmethod
     def tile_geom_geojson(cls, city, offset, tile):
