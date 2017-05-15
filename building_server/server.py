@@ -197,6 +197,41 @@ class GetAttribute(object):
 
         return resp
 
+class GetFeature(object):
+
+    def run(self, args):
+        city = city = args['city']
+        id = args['id']
+        representation = args['representation']
+        layer = args['layer']
+
+        offset = [0,0,0] # TODO: needs changing
+
+        rep = utils.CitiesConfig.representation(city, layer, representation)
+        if rep['datatype'] == 'polyhedralsurface':
+            geoms = Session.feature_polyhedral(city, offset, id, layer, representation)
+            wkbs = []
+            boxes = []
+            transform = np.array([
+                [1,0,0,offset[0]],
+                [0,1,0,offset[1]],
+                [0,0,1,offset[2]],
+                [0,0,0,1]], dtype=float)
+            transform = transform.flatten('F')
+            for geom in geoms:
+                wkbs.append(geom['geom'])
+                box = Box3D(geom['box'])
+                boxes.append(box.asarray())
+            gltf = GlTF.from_wkb(wkbs, boxes, transform)
+            b3dm = B3dm.from_glTF(gltf)
+            resp = Response(b3dm.to_array().tostring())
+            resp.headers['Content-Type'] = 'application/octet-stream'
+
+
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+
+        return resp
+
 class GetTile(object):
 
     def run(self, args):
@@ -205,6 +240,7 @@ class GetTile(object):
         representation = args['representation']
         layer = args['layer']
         depth = args['depth']
+        without = args.get('without', None)
         isFeature = (depth == len(CitiesConfig.scales(city)) - 1)
         gidOrTile = 'gid' if isFeature else 'tile'
 
@@ -219,7 +255,7 @@ class GetTile(object):
         rep = utils.CitiesConfig.representation(city, layer, representation)
 
         if rep['datatype'] == 'polyhedralsurface':
-            geoms = Session.tile_polyhedral(city, offset, tile, isFeature, layer, representation)
+            geoms = Session.tile_polyhedral(city, offset, tile, isFeature, layer, representation, without)
             wkbs = []
             boxes = []
             transform = np.array([
@@ -238,7 +274,7 @@ class GetTile(object):
             resp.headers['Content-Type'] = 'application/octet-stream'
         elif rep['datatype'] == '2.5D':
             # TODO: use 3d-tiles formats
-            geoms = Session.tile_2_5D(city, offset, tile, isFeature, layer, representation)
+            geoms = Session.tile_2_5D(city, offset, tile, isFeature, layer, representation, without)
             for geom in geoms:
                 properties = utils.PropertyCollection()
                 property = utils.Property(gidOrTile, '"{0}"'.format(geom[gidOrTile]))
@@ -251,8 +287,7 @@ class GetTile(object):
                 feature_collection.add(f)
 
             # build the resulting json
-            geometries = utils.Property('geometries', feature_collection.geojson())
-            json = '{' + geometries.geojson() + '}'
+            json = feature_collection.geojson()
 
             resp = Response(json)
             resp.headers['Content-Type'] = 'text/plain'

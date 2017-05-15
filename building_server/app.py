@@ -7,6 +7,7 @@ from .server import GetCities
 from .server import GetCity
 from .server import GetAttribute
 from .server import GetTile
+from .server import GetFeature
 from .server import GetScene
 
 api = Api(
@@ -87,6 +88,7 @@ gettile_parser.add_argument('layer', type=str, required=True)
 gettile_parser.add_argument('tile', type=int, required=True)
 gettile_parser.add_argument('depth', type=int, required=True)
 gettile_parser.add_argument('representation', type=str, required=True)
+gettile_parser.add_argument('without', type=str, required=False)
 @api.route("/getTile")
 class APIGetTile(Resource):
 
@@ -94,6 +96,20 @@ class APIGetTile(Resource):
     def get(self):
         args = gettile_parser.parse_args()
         return GetTile().run(args)
+
+# getFeature
+getfeature_parser = reqparse.RequestParser()
+getfeature_parser.add_argument('city', type=str, required=True)
+getfeature_parser.add_argument('layer', type=str, required=True)
+getfeature_parser.add_argument('id', type=int, required=True)
+getfeature_parser.add_argument('representation', type=str, required=True)
+@api.route("/getFeature")
+class APIGetFeature(Resource):
+
+    @api.expect(getfeature_parser, validate=True)
+    def get(self):
+        args = getfeature_parser.parse_args()
+        return GetFeature().run(args)
 
 # getScene
 getscene_parser = reqparse.RequestParser()

@@ -112,7 +112,42 @@ class Session():
         return res
 
     @classmethod
-    def tile_polyhedral(cls, city, offset, tile, isFeature, layer, representation):
+    def feature_polyhedral(cls, city, offset, feature, layer, representation):
+        """Returns a list of geometries in binary form.
+
+        Parameters
+        ----------
+        city : str
+        offset : list
+            [x, y, z] as float
+        feature : int
+        layer : str
+            'buildings'
+        representation : str
+            'lod1'
+
+        Returns
+        -------
+        res : list
+            List of OrderedDict with a 'gid' (or 'tile' if not feature) and a 'geom' key.
+
+            The 'geom' key is defined in binary wkb format.
+        """
+
+        rep = CitiesConfig.representation(city, layer, representation)
+        table = rep["featuretable"]
+        sql = ("SELECT gid, ST_AsBinary(ST_Translate(geom,"
+        "{2},{3},{4})) AS geom, Box3D(ST_Translate(geom,"
+        "{2},{3},{4})) AS box FROM {0} WHERE gid={1}"
+        .format(table, feature, -offset[0], -offset[1],
+                -offset[2]))
+
+        res = cls.query_asdict(sql)
+
+        return res
+
+    @classmethod
+    def tile_polyhedral(cls, city, offset, tile, isFeature, layer, representation, without):
         """Returns a list of geometries in binary form.
 
         Parameters
@@ -160,7 +195,7 @@ class Session():
         return res
 
     @classmethod
-    def tile_2_5D(cls, city, offset, tile, isFeature, layer, representation):
+    def tile_2_5D(cls, city, offset, tile, isFeature, layer, representation, without):
         """Returns a list of geometries in string representation.
 
         Parameters
@@ -189,20 +224,38 @@ class Session():
             # TODO optimise
             table = rep["featuretable"]
             featureTable = CitiesConfig.featureTable(city, layer)
-            sql = ("WITH t AS (SELECT gid FROM {1} WHERE tile='{2}')"
-                   "SELECT {0}.gid, zmin, zmax, ST_AsGeoJSON(geom,"
-                   "2, 1) AS geom from {0} JOIN t ON {0}.gid=t.gid"
-                   .format(table, featureTable, tile, -offset[0], -offset[1],
-                           -offset[2]))
+            if without == None:
+                sql = ("WITH t AS (SELECT gid FROM {1} WHERE tile='{2}')"
+                       "SELECT {0}.gid, zmin, zmax, ST_AsGeoJSON(geom,"
+                       "2, 1) AS geom from {0} JOIN t ON {0}.gid=t.gid"
+                       .format(table, featureTable, tile, -offset[0], -offset[1],
+                               -offset[2]))
+            else:
+                condition = " OR ".join(["gid!=" + f for f in without.split(",")])
+                sql = ("WITH t AS (SELECT gid FROM {1} WHERE tile='{2}' AND ({3}))"
+                       "SELECT {0}.gid, zmin, zmax, ST_AsGeoJSON(geom,"
+                       "2, 1) AS geom from {0} JOIN t ON {0}.gid=t.gid"
+                       .format(table, featureTable, tile, condition))
         else:
             table = rep["tiletable"]
-            sql = ("SELECT tile, zmin, zmax, ST_AsGeoJSON(geom,"
-                   "2, 1) AS geom from {0}"
-                   " WHERE tile={1}"
-                   .format(table, tile, -offset[0], -offset[1],
-                           -offset[2]))
+            if without == None:
+                sql = ("SELECT tile, zmin, zmax, ST_AsGeoJSON(geom,"
+                       "2, 1) AS geom from {0}"
+                       " WHERE tile={1}"
+                       .format(table, tile, -offset[0], -offset[1],
+                               -offset[2]))
+            else:
+                condition = " OR ".join(["gid=" + f for f in without.split(",")])
+                sql = ("WITH t AS (SELECT ST_Union(footprint) AS fp "
+                       "FROM {2} WHERE {3}) "
+                       "SELECT tile, zmin, zmax, ST_AsGeoJSON("
+                       "ST_Multi(ST_Difference(geom, fp)),"
+                       "2, 1) AS geom from {0}, t"
+                       " WHERE tile={1}"
+                       .format(table, tile, "test.buildings", condition))
 
         res = cls.query_asdict(sql)
+        res = [t for t in res if t['geom'] != None]
 
         return res
 
