@@ -18,8 +18,8 @@ class RuleEngine(object):
         self.default = {
             0: ["lod1"],
             1: ["lod1"],
-            2: ["lod1"],
-            3: ["lod1"]
+            #2: ["lod1"],
+            #3: ["lod1"]
         }
         self.tileConditions = [
             (
@@ -29,7 +29,8 @@ class RuleEngine(object):
                     'radius': 500
                 },
                 {
-                    3: ["lod1", "lod2"]
+                    #2: ["lod1"],
+                    3: ["lod1"]
                 }
             )
         ]
@@ -125,6 +126,7 @@ class Node(object):
         self.parent = None
         self.box = box
         self.features = []
+        self.withoutTiles = []
 
     def __str__(self):
         return "Node " + self.id + ", " + str(self.representation)
@@ -133,15 +135,30 @@ class Node(object):
         self.children.remove(child)
         child.parent = None
 
-    def add(self, child):
+    def link(self, child):
         self.children.append(child)
         child.parent = self
 
-def walk(node):
-    yield node
-    for child in node.children:
-        for n in walk(child):
-            yield n
+
+# A tile contains a list of nodes where each node comes from the same tile but
+# has a different representation
+class Tile(object):
+
+    def __init__(self, id, depth):
+        self.id = id
+        self.depth = depth
+        self.nodes = []
+        self.children = []
+
+    def append(self, node):
+        self.nodes.append(node)
+
+    def link(self, childTile):
+        self.children.append(childTile)
+
+    def empty(self):
+        return len(self.nodes) == 0
+
 
 class SceneBuilder():
 
@@ -158,7 +175,7 @@ class SceneBuilder():
 
         rules = RuleEngine(None)
         rules.testTiles(cursor, city, layer)
-        rules.testFeatures(cursor, city, layer)
+        #rules.testFeatures(cursor, city, layer)
 
         depthCondition = ""
         if maxDepth != None or startingDepth != None:
@@ -179,10 +196,10 @@ class SceneBuilder():
         cursor.execute(query)
         rows = cursor.fetchall()
         tree = {}
-        for r in rows:
-            if r[0] not in tree:
-                tree[r[0]] = []
-            tree[r[0]].append(r[1])
+        for (id, childId) in rows:
+            if id not in tree:
+                tree[id] = []
+            tree[id].append(childId)
 
         def filterTiles(tree, tile, tileList):
             if tile in tree:
@@ -191,94 +208,72 @@ class SceneBuilder():
                     filterTiles(tree, child, tileList)
 
         if tilesetContinuation:
-            tileList = {}
+            tileList = {}   # TODO: should be a set
             tileList[tile] = True;
             filterTiles(tree, tile, tileList)
 
         # Go through every tile
-        nodes = {}
+        tiles = {}
         lvl0Nodes = []
         lvl0Tiles = []
         query = "SELECT tile, depth, bbox FROM {0}".format(tileTable)
         query += depthCondition
         cursor.execute(query)
         rows = cursor.fetchall()
-        for r in rows if tile == None else [t for t in rows if t[0] in tileList]:
-            depth = r[1]
-            if r[2] != None:
-                box = utils.Box3D(r[2])
 
-            # Go through every representations in order of increasing detail
-            existingRepresentations = []
-
+        def generateNodes(tile, id, depth, box, isFeature):
+            # Find requested representations for the tile at this specific depth
             reps = []
-            for rep in rules.resolveTile(r[0], depth):
+            for rep in rules.resolveTile(id, depth):
                 a = utils.CitiesConfig.representation(city, layer, rep)
                 a["name"] = rep
                 reps.append(a)
 
-            features = rules.resolveFeatures(r[0])
+            features = rules.resolveFeatures(id)
 
+            # Check if representation exists in the database for the tile
+            tableId = 'featuretable' if isFeature else 'tiletable'
             for rep in reps:
-                if 'tiletable' in rep:
-                    fs = [f for f in features if any([depth >= x for x in f[1].keys()])]
-                    query = "SELECT tile FROM {0} WHERE tile={1}".format(rep['tiletable'], r[0])
+                fs = [f for f in features if any([depth >= x for x in f[1].keys()])]
+                if tableId in rep:
+                    table = rep[tableId]
+                    if isFeature:
+                        query = "WITH t AS (SELECT gid FROM {1} WHERE tile={2}) SELECT {0}.gid FROM {0} INNER JOIN t ON {0}.gid=t.gid LIMIT 1".format(table, featureTable, id)
+                    else:
+                        query = "SELECT tile FROM {0} WHERE tile={1}".format(table, id)
                     cursor.execute(query)
                     if cursor.rowcount != 0:
                         score = (1 + depth) #TODO: Temp
-                        node = Node(r[0], depth, rep["name"], box, False if maxDepth == None else depth == maxDepth + 1)
+                        node = Node(id, depth, rep["name"], box, False)
                         node.features = fs;
-                        existingRepresentations.append(node)
-
-                if depth + 1 == cityDepth and (maxDepth == None or depth + 1 <= maxDepth):
-                    fs = [f for f in features if any([depth + 1 > x for x in f[1].keys()])]
-                    if 'featuretable' in rep:
-                        query = "WITH t AS (SELECT gid FROM {1} WHERE tile={2}) SELECT {0}.gid FROM {0} INNER JOIN t ON {0}.gid=t.gid LIMIT 1".format(rep['featuretable'], featureTable, r[0])
-                        cursor.execute(query)
-                        if cursor.rowcount != 0:
-                            score = (1 + depth + 1) #TODO: Temp
-                            node = Node(r[0], depth + 1, rep["name"], box, False)
-                            node.features = fs;
-                            existingRepresentations.append(node)
-
-            # Linking node's representations
-            nodeRep = []
-            for i, node in enumerate(existingRepresentations):
-                nodeRep.append(node)
-                if i != 0:
-                    nodeRep[i-1].children.append(node)
-                    node.parent = nodeRep[i-1]
-            nodes[r[0]] = nodeRep
+                        tile.append(node)
 
             if depth == startingDepth:
-                lvl0Tiles.append(r[0])
+                lvl0Tiles.append(id)
+
+        for (id, depth, bbox) in rows if tile == None else [t for t in rows if t[0] in tileList]:
+            box = None
+            if bbox != None:
+                box = utils.Box3D(bbox)
+
+            tile = Tile(id, depth)
+            tiles[id] = tile
+
+            generateNodes(tile, id, depth, box, False)
+
+            # Generate feature-level tile too if we're at the last tile depth
+            if depth + 1 == cityDepth and (maxDepth == None or depth + 1 <= maxDepth):
+                generateNodes(tile, id, depth + 1, box, True)
 
         # Linking nodes
         lvl0Nodes = []
         # For each tile at depth 0
-        for n in lvl0Tiles:
-            # Ordered list (by detail) of representations of the node n
-            noderep = nodes[n]
-            # Build node/representation tree
-            children = cls.addChildren(tree, nodes, n)
-            # Link children nodes to level 0 nodes
-            if len(noderep) == 0:
-                # No level 0 tiles: children become level 0 tiles
-                for nr in children:
-                    lvl0Nodes.append(nr[0])
-            else:
-                # There is at least one representation for the levl 0 tile
-                # Add most detailed representation as level 0 node
-                lvl0Nodes.append(noderep[0])
-                #for nr in children:
-                    # Add children to least detailed representation
-                #    noderep[-1].add(nr[0])
-        """
-        for r in rows:
-            if len(nodes[r[0]]) != 0:
-                if len(nodes[r[1]]) != 0:
-                    nodes[r[0]][-1].add(nodes[r[1]][0])
-        """
+        for t in lvl0Tiles:
+            tile = tiles[t]
+            # Build tile tree
+            cls.linkTiles(tree, tiles, t)
+            # Create scene graph by linking the nodes of the tiles
+            lvl0Nodes += cls.createSceneGraph(tile)
 
         # Add single root if necessary
         if len(lvl0Nodes) == 1:
@@ -299,36 +294,35 @@ class SceneBuilder():
         return cls.to3dTiles(root, city, layer, customisationString)
 
     @classmethod
-    def addChildren(cls, tree, allNodes, nodeId):
-        # Node is a leaf: end recursion
-        if nodeId not in tree:
-            return []
+    def linkTiles(cls, tree, allTiles, tileId):
+        # Tile is a leaf: end recursion
+        if tileId not in tree:
+            return
 
-        children = []
-        # For each child node
-        for n in tree[nodeId]:
-            # Ordered list (by detail) of representations of the node n
-            nr = allNodes[n]
-            if len(nr) != 0:
-                children.append(nr)
-
-        noChild = len(children) == 0
-        for n in tree[nodeId]:
+        tile = allTiles[tileId]
+        # Get children of tile
+        for t in tree[tileId]:
+            # Link child
+            tile.link(allTiles[t])
             # Recursion
-            c = cls.addChildren(tree, allNodes, n)
-            # If children nodes have no representation, check if there are any
-            # representations lower in the tree and add them as children
-            if noChild:
-                children += c
+            cls.linkTiles(tree, allTiles, t)
 
-        # Ordered list (by detail) of representations of the current node
-        nodeReps = allNodes[nodeId]
-        if len(nodeReps) != 0:
-            for nr in children:
-                # Add children to least detailed representation
-                nodeReps[-1].add(nr[0])
+    @classmethod
+    def createSceneGraph(cls, tile):
+        if tile.empty():
+            childrenTopNodes = []
+            for child in tile.children:
+                childrenTopNodes += cls.createSceneGraph(child)
+            return childrenTopNodes
+        else:
+            for i in range(0, len(tile.nodes) - 1):
+                tile.nodes[i].link(tile.nodes[i + 1])
 
-        return children
+            for child in tile.children:
+                for node in cls.createSceneGraph(child):
+                    tile.nodes[-1].link(node)
+
+            return [tile.nodes[0]]
 
     @classmethod
     def to3dTiles(cls, root, city, layer, customisationString):
