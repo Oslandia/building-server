@@ -315,7 +315,8 @@ class GetScene(object):
         if (tile == None and depth != None) or (tile != None and depth == None):
             return Response("Tile and depth should either both be defined or both not defined", 400)
 
-        json = SceneBuilder.build(Session.db.cursor(), city, layer, representations, maxDepth, tile, depth)
+        sceneBuilder = SceneBuilder(Session.db.cursor(), city, layer, representations)
+        json = sceneBuilder.build(maxDepth, tile, depth)
 
         resp = Response(json)
         resp.headers['Access-Control-Allow-Origin'] = '*'

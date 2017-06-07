@@ -18,7 +18,7 @@ class RuleEngine(object):
         self.default = {
             0: ["lod1"],
             1: ["lod1"],
-            #2: ["lod1"],
+            2: ["lod1"],
             #3: ["lod1"]
         }
         self.tileConditions = [
@@ -166,8 +166,18 @@ class Tile(object):
 
 class SceneBuilder():
 
-    @classmethod
-    def build(cls, cursor, city, layer, representations, maxDepth, tile, startingDepth):
+    def __init__(self, cursor, city, layer, representations):
+        self.cursor = cursor
+        self.city = city
+        self.layer = layer
+        self.representations = representations
+
+    def build(self, maxDepth, tile, startingDepth):
+        cursor = self.cursor
+        city = self.city
+        layer = self.layer
+        representations = self.representations
+
         tileTable = utils.CitiesConfig.tileTable(city)
         tileHierarchy = utils.CitiesConfig.tileHierarchy(city)
         featureTable = utils.CitiesConfig.featureTable(city, layer)
@@ -177,6 +187,7 @@ class SceneBuilder():
         maxDepth = None if maxDepth == cityDepth - 1 else maxDepth  # maxDepth is pointless in this case (no speed gain and negligible size reduction)
         customisationString = "representations={0}&weights={1}".format(",".join([a[0] for a in representations]), ",".join([str(a[1]) for a in representations]))
 
+        # TODO: move this to constructor
         rules = RuleEngine(None)
         rules.testTiles(cursor, city, layer)
         #rules.testFeatures(cursor, city, layer)
@@ -275,9 +286,9 @@ class SceneBuilder():
         for t in lvl0Tiles:
             tile = tiles[t]
             # Build tile tree
-            cls.linkTiles(tree, tiles, t)
+            self.linkTiles(tree, tiles, t)
             # Create scene graph by linking the nodes of the tiles
-            lvl0Nodes += cls.createSceneGraph(tile)[0]
+            lvl0Nodes += self.createSceneGraph(tile)[0]
 
         # Add single root if necessary
         if len(lvl0Nodes) == 1:
@@ -295,10 +306,9 @@ class SceneBuilder():
             root = Node(-1, -1, None, box, False)
             root.children = lvl0Nodes
 
-        return cls.to3dTiles(root, city, layer, customisationString)
+        return self.to3dTiles(root, customisationString)
 
-    @classmethod
-    def linkTiles(cls, tree, allTiles, tileId):
+    def linkTiles(self, tree, allTiles, tileId):
         # Tile is a leaf: end recursion
         if tileId not in tree:
             return
@@ -309,15 +319,14 @@ class SceneBuilder():
             # Link child
             tile.link(allTiles[t])
             # Recursion
-            cls.linkTiles(tree, allTiles, t)
+            self.linkTiles(tree, allTiles, t)
 
-    @classmethod
-    def createSceneGraph(cls, tile):
+    def createSceneGraph(self, tile):
         if tile.empty():
             childrenTopNodes = []
             missingTiles = []
             for child in tile.children:
-                (topNodes, missing) = cls.createSceneGraph(child)
+                (topNodes, missing) = self.createSceneGraph(child)
                 childrenTopNodes += topNodes
                 missingTiles += missing
             if len(childrenTopNodes) == 0:
@@ -331,7 +340,7 @@ class SceneBuilder():
             missingChildren = []
             noChild = True
             for child in tile.children:
-                (topNodes, missing) = cls.createSceneGraph(child)
+                (topNodes, missing) = self.createSceneGraph(child)
                 if len(topNodes) == 0:
                     tile.missingTiles.append(child)
                 else:
@@ -341,28 +350,36 @@ class SceneBuilder():
                         tile.nodes[-1].link(node)
             if noChild:
                 tile.missingTiles = []
-            else:
-                # TODO: check if tile really exists
+            elif len(tile.missingTiles) != 0:
                 lastNode = tile.nodes[-1]
-                newNode = Node(lastNode.id, lastNode.depth + 1,
-                lastNode.representation, lastNode.box, False)
-                newNode.features = lastNode.features
-                newNode.partial = tile.missingTiles
-                lastNode.link(newNode)
+                # check which tiles exist for last node's representation
+                existingTiles = self.checkRepresentation(lastNode.representation, tile.missingTiles)
+                if len(existingTiles) != 0:
+                    newNode = Node(lastNode.id, lastNode.depth + 1,
+                    lastNode.representation, lastNode.box, False)
+                    newNode.features = lastNode.features
+                    newNode.partial = existingTiles
+                    lastNode.link(newNode)
 
             return ([tile.nodes[0]], [])
 
-    @classmethod
-    def to3dTiles(cls, root, city, layer, customisationString):
+    def checkRepresentation(self, representation, tiles):
+        condition = " OR ".join(["tile={0}".format(t.id) for t in tiles])
+        table = utils.CitiesConfig.representation(self.city, self.layer, representation)['tiletable']
+        query = "SELECT tile FROM {0} WHERE {1}".format(table, condition)
+        self.cursor.execute(query)
+        tileSet = { t[0] for t in self.cursor.fetchall() }
+        return [t for t in tiles if t.id in tileSet]
+
+    def to3dTiles(self, root, customisationString):
         tiles = {
             "asset": {"version" : "1.0"},
             "geometricError": 100,  # TODO: should reflect startingDepth
-            "root" : cls.to3dTiles_r(root, city, layer, customisationString, 10)[0]
+            "root" : self.to3dTiles_r(root, customisationString, 10)[0]
         }
         return json.dumps(tiles)
 
-    @classmethod
-    def to3dTiles_r(cls, node, city, layer, customisationString, error):
+    def to3dTiles_r(self, node, customisationString, error):
         # TODO : handle combined nodes
         (c1, c2) = node.box.corners()
         center = [(c1[i] + c2[i]) / 2 for i in range(0,3)]
@@ -376,17 +393,17 @@ class SceneBuilder():
                 "box": box
             },
             "geometricError": error, # TODO: keep or change?
-            "children": [elt for n in node.children for elt in cls.to3dTiles_r(n, city, layer, customisationString, error + 1)]
+            "children": [elt for n in node.children for elt in self.to3dTiles_r(n, customisationString, error + 1)]
         }
         tiles.append(tile)
         if node.representation != None:
             if node.isLink:
                 tile["content"] = {
-                    "url": "getScene?city={0}&layer={1}&tile={2}&depth={3}&{4}".format(city, layer, node.id, node.depth, customisationString)
+                    "url": "getScene?city={0}&layer={1}&tile={2}&depth={3}&{4}".format(self.city, self.layer, node.id, node.depth, customisationString)
                 }
             else:
                 tile["content"] = {
-                    "url": "getTile?city={0}&layer={1}&tile={2}&representation={3}&depth={4}".format(city, layer, node.id, node.representation, node.depth)
+                    "url": "getTile?city={0}&layer={1}&tile={2}&representation={3}&depth={4}".format(self.city, self.layer, node.id, node.representation, node.depth)
                 }
                 if len(node.partial) != 0:
                     tile["content"]["url"] += "&onlyTiles="
@@ -398,21 +415,20 @@ class SceneBuilder():
                         if all([node.depth <= x for x in feature[1].keys()]):
                             # New feature: create new branch in scene graph
                             # TODO: should be appended to the parent's children
-                            tiles.append(cls.to3dTiles_feature(feature, city, layer, customisationString, node.depth, error, box))
+                            tiles.append(self.to3dTiles_feature(feature, customisationString, node.depth, error, box))
 
         else:
             tile["refine"] = "add"
         return tiles
 
-    @classmethod
-    def to3dTiles_feature(cls, feature, city, layer, customisationString, depth, error, box):
+    def to3dTiles_feature(self, feature, customisationString, depth, error, box):
         tile = {
             "boundingVolume": {
                 "box": box  # TODO: compute real feature box
             },
             "geometricError": error, # TODO: keep or change?
             "content" : {
-                "url": "getFeature?city={0}&layer={1}&id={2}&representation={3}".format(city, layer, feature[0], feature[1][depth][0])
+                "url": "getFeature?city={0}&layer={1}&id={2}&representation={3}".format(self.city, self.layer, feature[0], feature[1][depth][0])
             },
             "children": []
             # TODO: "children": [cls.to3dTiles_feature(n, feature, layer, customisationString, error + 1)]
