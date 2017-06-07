@@ -3,6 +3,7 @@
 from itertools import chain
 from psycopg2 import connect
 from psycopg2.extras import NamedTupleCursor
+from psycopg2 import sql
 
 from .utils import CitiesConfig
 
@@ -31,9 +32,9 @@ class Session():
             [x, y, z] as float or None if no tile is found
         """
 
-        sql = ("SELECT bbox from {0}_bbox WHERE quadtile = '{1}'"
+        query = ("SELECT bbox from {0}_bbox WHERE quadtile = '{1}'"
                .format(CitiesConfig.table(city), tile))
-        res = cls.query_aslist(sql)
+        res = cls.query_aslist(query)
 
         offset = None
         if res:
@@ -50,10 +51,10 @@ class Session():
         rep = CitiesConfig.representation(city, layer, representation)
         table = rep["featuretable"]
         featureTable = CitiesConfig.featureTable(city, layer)
-        sql = ("WITH t AS (SELECT gid FROM {1} WHERE tile='{2}')"
+        query = ("WITH t AS (SELECT gid FROM {1} WHERE tile='{2}')"
                "SELECT Box3D(geom) FROM {0} JOIN t ON {0}.gid=t.gid"
                .format(table, featureTable, tile))
-        res = cls.query_aslist(sql)
+        res = cls.query_aslist(query)
 
         center = None
         if res:
@@ -72,8 +73,8 @@ class Session():
     @classmethod
     def feature_center(cls, city, gid, layer, representation):
         rep = CitiesConfig.representation(city, layer, representation)
-        sql = "SELECT Box3D(geom) FROM {0} WHERE gid={1}".format(rep["featuretable"], gid)
-        res = cls.query_aslist(sql)
+        query = "SELECT Box3D(geom) FROM {0} WHERE gid={1}".format(rep["featuretable"], gid)
+        res = cls.query_aslist(query)
 
         center = None
         if res:
@@ -110,12 +111,12 @@ class Session():
             '{"type":"", "bbox":"","coordinates":[[[[x0, y0, z0], ...]]]}'
         """
 
-        sql = ("SELECT gid, ST_AsGeoJSON(ST_Translate(geom,"
+        query = ("SELECT gid, ST_AsGeoJSON(ST_Translate(geom,"
                "{2},{3},{4}), 2, 1) AS geom from {0}"
                " WHERE quadtile='{1}'"
                .format(CitiesConfig.table(city), tile, -offset[0], -offset[1],
                        -offset[2]))
-        res = cls.query_asdict(sql)
+        res = cls.query_asdict(query)
 
         return res
 
@@ -144,18 +145,18 @@ class Session():
 
         rep = CitiesConfig.representation(city, layer, representation)
         table = rep["featuretable"]
-        sql = ("SELECT gid, ST_AsBinary(ST_Translate(geom,"
+        query = ("SELECT gid, ST_AsBinary(ST_Translate(geom,"
         "{2},{3},{4})) AS geom, Box3D(ST_Translate(geom,"
         "{2},{3},{4})) AS box FROM {0} WHERE gid={1}"
         .format(table, feature, -offset[0], -offset[1],
                 -offset[2]))
 
-        res = cls.query_asdict(sql)
+        res = cls.query_asdict(query)
 
         return res
 
     @classmethod
-    def tile_polyhedral(cls, city, offset, tile, isFeature, layer, representation, without):
+    def tile_polyhedral(cls, city, offset, tile, isFeature, layer, representation, without, onlyTiles):
         """Returns a list of geometries in binary form.
 
         Parameters
@@ -183,7 +184,7 @@ class Session():
             # TODO optimise
             table = rep["featuretable"]
             featureTable = CitiesConfig.featureTable(city, layer)
-            sql = ("WITH t AS (SELECT gid FROM {1} WHERE tile='{2}')"
+            query = ("WITH t AS (SELECT gid FROM {1} WHERE tile='{2}')"
             "SELECT {0}.gid, ST_AsBinary(ST_Translate(geom,"
             "{3},{4},{5})) AS geom, Box3D(ST_Translate(geom,"
             "{3},{4},{5})) AS box from {0} JOIN t ON {0}.gid=t.gid"
@@ -191,19 +192,19 @@ class Session():
                     -offset[2]))
         else:
             table = rep["tiletable"]
-            sql = ("SELECT tile, ST_AsBinary(ST_Translate(geom,"
+            query = ("SELECT tile, ST_AsBinary(ST_Translate(geom,"
                    "{2},{3},{4})) AS geom, Box3D(ST_Translate(geom,"
                    "{2},{3},{4})) AS box from {0}"
                    " WHERE tile={1}"
                    .format(table, tile, -offset[0], -offset[1],
                            -offset[2]))
 
-        res = cls.query_asdict(sql)
+        res = cls.query_asdict(query)
 
         return res
 
     @classmethod
-    def tile_2_5D(cls, city, offset, tile, isFeature, layer, representation, without):
+    def tile_2_5D(cls, city, offset, tile, isFeature, layer, representation, without, onlyTiles):
         """Returns a list of geometries in string representation.
 
         Parameters
@@ -230,39 +231,46 @@ class Session():
         rep = CitiesConfig.representation(city, layer, representation)
         if isFeature:
             # TODO optimise
-            table = rep["featuretable"]
-            featureTable = CitiesConfig.featureTable(city, layer)
-            if without == None:
-                sql = ("WITH t AS (SELECT gid FROM {1} WHERE tile='{2}')"
-                       "SELECT {0}.gid, zmin, zmax, ST_AsGeoJSON(geom,"
-                       "2, 1) AS geom from {0} JOIN t ON {0}.gid=t.gid"
-                       .format(table, featureTable, tile, -offset[0], -offset[1],
-                               -offset[2]))
-            else:
-                condition = " OR ".join(["gid!=" + f for f in without.split(",")])
-                sql = ("WITH t AS (SELECT gid FROM {1} WHERE tile='{2}' AND ({3}))"
-                       "SELECT {0}.gid, zmin, zmax, ST_AsGeoJSON(geom,"
-                       "2, 1) AS geom from {0} JOIN t ON {0}.gid=t.gid"
-                       .format(table, featureTable, tile, condition))
+            table = cls.table_to_sql(rep["featuretable"])
+            featureTable = cls.table_to_sql(CitiesConfig.featureTable(city, layer))
+            condition = sql.SQL("tile='{0}'").format(sql.Literal(tile))
+            if without is not None:
+                subCondition = sql.SQL(" OR ").join([sql.SQL("gid!={0}").format(sql.Literal(f)) for f in without.split(",")])
+                condition = sql.SQL("{0} AND {1}").format(condition, subCondition)
+            query = sql.SQL("WITH t AS (SELECT gid FROM {1} WHERE {2})"
+                   "SELECT {0}.gid, zmin, zmax, ST_AsGeoJSON(geom,"
+                   "2, 1) AS geom from {0} JOIN t ON {0}.gid=t.gid"
+                   ).format(table, featureTable, condition)
         else:
-            table = rep["tiletable"]
-            if without == None:
-                sql = ("SELECT tile, zmin, zmax, ST_AsGeoJSON(geom,"
-                       "2, 1) AS geom from {0}"
-                       " WHERE tile={1}"
-                       .format(table, tile, -offset[0], -offset[1],
-                               -offset[2]))
-            else:
-                condition = " OR ".join(["gid=" + f for f in without.split(",")])
-                sql = ("WITH t AS (SELECT ST_Union(footprint) AS fp "
-                       "FROM {2} WHERE {3}) "
-                       "SELECT tile, zmin, zmax, ST_AsGeoJSON("
-                       "ST_Multi(ST_Difference(geom, fp)),"
-                       "2, 1) AS geom from {0}, t"
-                       " WHERE tile={1}"
-                       .format(table, tile, "test.buildings", condition))
+            table = cls.table_to_sql(rep["tiletable"])
+            geomSelection = sql.SQL("geom")
+            tables = table
+            subqueries = []
+            if without is not None:
+                featureTable = cls.table_to_sql(CitiesConfig.featureTable(city, layer))
+                geomSelection = sql.SQL("ST_Multi(ST_Difference({0}, feature_fp))").format(geomSelection)
+                tables = sql.SQL("{0}, t").format(table)
+                condition = sql.SQL(" OR ").join([sql.SQL("gid={0}").format(sql.Literal(f)) for f in without.split(",")])
+                subquery = sql.SQL("t AS (SELECT ST_Union(footprint) "
+                            "AS feature_fp FROM {0} WHERE {1})"
+                            ).format(featureTable, condition)
+                subqueries.append(subquery)
+            if onlyTiles is not None:
+                tileTable = cls.table_to_sql(CitiesConfig.tileTable(city))
+                geomSelection = sql.SQL("ST_Multi(ST_Intersection({0}, tile_fp))").format(geomSelection)
+                tables = sql.SQL("{0}, d").format(table)
+                condition = sql.SQL(" OR ").join([sql.SQL("tile={0}").format(sql.Literal(t)) for t in onlyTiles.split(",")])
+                subquery = sql.SQL("d AS (SELECT ST_Union(footprint) "
+                            "AS tile_fp FROM {0} WHERE {1})"
+                            ).format(tileTable, condition)
+                subqueries.append(subquery)
+            query = sql.SQL("SELECT tile, zmin, zmax, ST_AsGeoJSON({0}, 2, 1) AS geom "
+                    "FROM {1} WHERE tile={2}"
+                    ).format(geomSelection, tables, sql.Literal(tile))
+            if len(subqueries) != 0:
+                query = sql.SQL("WITH {0} {1}").format(sql.SQL(", ").join(subqueries), query)
 
-        res = cls.query_asdict(sql)
+        res = cls.query_asdict(query)
         res = [t for t in res if t['geom'] != None]
 
         return res
@@ -283,9 +291,9 @@ class Session():
             List of OrderedDict with 'box3D' and 'binary' keys.
         """
 
-        sql = ("SELECT Box3D(geom), ST_AsBinary(geom) as binary from {0}"
+        query = ("SELECT Box3D(geom), ST_AsBinary(geom) as binary from {0}"
                " where quadtile='{1}'".format(CitiesConfig.table(city), tile))
-        res = cls.query_asdict(sql)
+        res = cls.query_asdict(query)
 
         return res
 
@@ -304,9 +312,9 @@ class Session():
         val : str
         """
 
-        sql = ("SELECT {0} FROM {1} WHERE gid = {2}"
+        query = ("SELECT {0} FROM {1} WHERE gid = {2}"
                .format(attribute, CitiesConfig.table(city), gid))
-        res = cls.query_asdict(sql)
+        res = cls.query_asdict(query)
 
         val = None
         if res:
@@ -336,10 +344,10 @@ class Session():
                 cond += " or "
             cond += "quadtile='{0}'".format(quadtile)
 
-        sql = ('SELECT quadtile, bbox from {0}_bbox where {1}'
+        query = ('SELECT quadtile, bbox from {0}_bbox where {1}'
                .format(CitiesConfig.table(city), cond))
 
-        return cls.query_asdict(sql)
+        return cls.query_asdict(query)
 
     @classmethod
     def tiles_for_level(cls, city, level):
@@ -358,10 +366,10 @@ class Session():
 
         regex = "{0}/".format(level)
 
-        sql = ("SELECT quadtile, bbox FROM {0}_bbox"
+        query = ("SELECT quadtile, bbox FROM {0}_bbox"
                " WHERE substr(quadtile,1,{1})='{2}'"
                .format(CitiesConfig.table(city), len(regex), regex))
-        return cls.query_asdict(sql)
+        return cls.query_asdict(query)
 
     @classmethod
     def score_for_polygon(cls, city, pol, scoreFunction):
@@ -380,12 +388,12 @@ class Session():
             List of dict whith 'score', 'gid' and 'box3d' keys
         """
 
-        sql = ("SELECT gid, Box3D(geom), {0} as \"score\" FROM {1} "
+        query = ("SELECT gid, Box3D(geom), {0} as \"score\" FROM {1} "
                "WHERE (geom && 'POLYGON(({2}, {3}, {4}, {5}, {2}))'::geometry)"
                " ORDER BY score DESC"
                .format(scoreFunction, city, pol[0], pol[1], pol[2], pol[3]))
 
-        return cls.query_asdict(sql)
+        return cls.query_asdict(query)
 
     @classmethod
     def add_column(cls, city, column, typecol):
@@ -402,9 +410,9 @@ class Session():
         Nothing
         """
 
-        sql = ("ALTER TABLE {0} ADD COLUMN {1} {2}"
+        query = ("ALTER TABLE {0} ADD COLUMN {1} {2}"
                .format(CitiesConfig.table(city), column, typecol))
-        cls.db.cursor().execute(sql)
+        cls.db.cursor().execute(query)
 
     @classmethod
     def update_table(cls, city, quadtile, weight, gid):
@@ -422,9 +430,9 @@ class Session():
         Nothing
         """
 
-        sql = ("UPDATE {0} SET quadtile = '{1}', weight = {2} WHERE gid = {3}"
+        query = ("UPDATE {0} SET quadtile = '{1}', weight = {2} WHERE gid = {3}"
                .format(CitiesConfig.table(city), quadtile, weight, gid))
-        cls.db.cursor().execute(sql)
+        cls.db.cursor().execute(query)
 
     @classmethod
     def create_index(cls, city, column):
@@ -440,10 +448,10 @@ class Session():
         Nothing
         """
 
-        sql = ("CREATE INDEX tileIdx_{0} on {1} ({2})"
+        query = ("CREATE INDEX tileIdx_{0} on {1} ({2})"
                .format(CitiesConfig.table(city).replace(".", ""), city,
                        column))
-        cls.db.cursor().execute(sql)
+        cls.db.cursor().execute(query)
 
     @classmethod
     def create_bbox_table(cls, city):
@@ -458,9 +466,9 @@ class Session():
         Nothing
         """
 
-        sql = ("CREATE TABLE {0}_bbox (quadtile varchar(10) PRIMARY KEY"
+        query = ("CREATE TABLE {0}_bbox (quadtile varchar(10) PRIMARY KEY"
                ", bbox Box3D);".format(CitiesConfig.table(city)))
-        cls.db.cursor().execute(sql)
+        cls.db.cursor().execute(query)
 
     @classmethod
     def insert_into_bbox_table(cls, city, quadtile, bbox):
@@ -478,10 +486,10 @@ class Session():
         Nothing
         """
 
-        sql = ("INSERT INTO {0}_bbox values ('{1}', "
+        query = ("INSERT INTO {0}_bbox values ('{1}', "
                "Box3D(ST_GeomFromText('LINESTRING({2})')))"
                .format(CitiesConfig.table(city), quadtile, bbox))
-        cls.db.cursor().execute(sql)
+        cls.db.cursor().execute(query)
 
     @classmethod
     def drop_column(cls, city, column):
@@ -497,9 +505,9 @@ class Session():
         Nothing
         """
 
-        sql = ("ALTER TABLE {0} DROP COLUMN IF EXISTS {1}"
+        query = ("ALTER TABLE {0} DROP COLUMN IF EXISTS {1}"
                .format(CitiesConfig.table(city), column))
-        cls.db.cursor().execute(sql)
+        cls.db.cursor().execute(query)
 
     @classmethod
     def drop_bbox_table(cls, city):
@@ -514,9 +522,14 @@ class Session():
         Nothing
         """
 
-        sql = ("DROP TABLE IF EXISTS {0}_bbox;"
+        query = ("DROP TABLE IF EXISTS {0}_bbox;"
                .format(CitiesConfig.table(city)))
-        cls.db.cursor().execute(sql)
+        cls.db.cursor().execute(query)
+
+
+    @classmethod
+    def table_to_sql(cls, table):
+        return sql.SQL('.').join([sql.Identifier(x) for x in table.split('.')])
 
     @classmethod
     def query(cls, query, parameters=None):

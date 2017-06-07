@@ -88,7 +88,8 @@ gettile_parser.add_argument('layer', type=str, required=True)
 gettile_parser.add_argument('tile', type=int, required=True)
 gettile_parser.add_argument('depth', type=int, required=True)
 gettile_parser.add_argument('representation', type=str, required=True)
-gettile_parser.add_argument('without', type=str, required=False)
+gettile_parser.add_argument('withoutFeatures', type=str, required=False)
+gettile_parser.add_argument('onlyTiles', type=str, required=False)
 @api.route("/getTile")
 class APIGetTile(Resource):
 

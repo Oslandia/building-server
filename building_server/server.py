@@ -240,7 +240,8 @@ class GetTile(object):
         representation = args['representation']
         layer = args['layer']
         depth = args['depth']
-        without = args.get('without', None)
+        withoutFeatures = args.get('withoutFeatures', None)
+        onlyTiles = args.get('onlyTiles', None)
         isFeature = (depth == len(CitiesConfig.scales(city)) - 1)
         gidOrTile = 'gid' if isFeature else 'tile'
 
@@ -252,7 +253,7 @@ class GetTile(object):
 
         if rep['datatype'] == 'polyhedralsurface':
             offset = Session.tile_center(city, tile, layer, representation)
-            geoms = Session.tile_polyhedral(city, offset, tile, isFeature, layer, representation, without)
+            geoms = Session.tile_polyhedral(city, offset, tile, isFeature, layer, representation, withoutFeatures, onlyTiles)
             wkbs = []
             boxes = []
             transform = np.array([
@@ -273,7 +274,7 @@ class GetTile(object):
             # TODO: use 3d-tiles formats
             # TODO: use offset
             offset = [0, 0, 0]
-            geoms = Session.tile_2_5D(city, offset, tile, isFeature, layer, representation, without)
+            geoms = Session.tile_2_5D(city, offset, tile, isFeature, layer, representation, withoutFeatures, onlyTiles)
             for geom in geoms:
                 properties = utils.PropertyCollection()
                 property = utils.Property(gidOrTile, '"{0}"'.format(geom[gidOrTile]))

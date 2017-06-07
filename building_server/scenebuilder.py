@@ -126,7 +126,7 @@ class Node(object):
         self.parent = None
         self.box = box
         self.features = []
-        self.withoutTiles = []
+        self.partial = []
 
     def __str__(self):
         return "Node " + self.id + ", " + str(self.representation)
@@ -149,6 +149,10 @@ class Tile(object):
         self.depth = depth
         self.nodes = []
         self.children = []
+        self.missingTiles = []
+
+    def __str__(self):
+        return "Tile " + str(self.id)
 
     def append(self, node):
         self.nodes.append(node)
@@ -273,7 +277,7 @@ class SceneBuilder():
             # Build tile tree
             cls.linkTiles(tree, tiles, t)
             # Create scene graph by linking the nodes of the tiles
-            lvl0Nodes += cls.createSceneGraph(tile)
+            lvl0Nodes += cls.createSceneGraph(tile)[0]
 
         # Add single root if necessary
         if len(lvl0Nodes) == 1:
@@ -311,18 +315,42 @@ class SceneBuilder():
     def createSceneGraph(cls, tile):
         if tile.empty():
             childrenTopNodes = []
+            missingTiles = []
             for child in tile.children:
-                childrenTopNodes += cls.createSceneGraph(child)
-            return childrenTopNodes
+                (topNodes, missing) = cls.createSceneGraph(child)
+                childrenTopNodes += topNodes
+                missingTiles += missing
+            if len(childrenTopNodes) == 0:
+                return ([], [tile])
+
+            return (childrenTopNodes, missingTiles)
         else:
             for i in range(0, len(tile.nodes) - 1):
                 tile.nodes[i].link(tile.nodes[i + 1])
 
+            missingChildren = []
+            noChild = True
             for child in tile.children:
-                for node in cls.createSceneGraph(child):
-                    tile.nodes[-1].link(node)
+                (topNodes, missing) = cls.createSceneGraph(child)
+                if len(topNodes) == 0:
+                    tile.missingTiles.append(child)
+                else:
+                    noChild = False
+                    tile.missingTiles += missing
+                    for node in topNodes:
+                        tile.nodes[-1].link(node)
+            if noChild:
+                tile.missingTiles = []
+            else:
+                # TODO: check if tile really exists
+                lastNode = tile.nodes[-1]
+                newNode = Node(lastNode.id, lastNode.depth + 1,
+                lastNode.representation, lastNode.box, False)
+                newNode.features = lastNode.features
+                newNode.partial = tile.missingTiles
+                lastNode.link(newNode)
 
-            return [tile.nodes[0]]
+            return ([tile.nodes[0]], [])
 
     @classmethod
     def to3dTiles(cls, root, city, layer, customisationString):
@@ -360,8 +388,11 @@ class SceneBuilder():
                 tile["content"] = {
                     "url": "getTile?city={0}&layer={1}&tile={2}&representation={3}&depth={4}".format(city, layer, node.id, node.representation, node.depth)
                 }
+                if len(node.partial) != 0:
+                    tile["content"]["url"] += "&onlyTiles="
+                    tile["content"]["url"] += ",".join([str(t.id) for t in node.partial])
                 if len(node.features) != 0:
-                    tile["content"]["url"] += "&without="
+                    tile["content"]["url"] += "&withoutFeatures="
                     tile["content"]["url"] += ",".join([str(f[0]) for f in node.features])
                     for feature in node.features:
                         if all([node.depth <= x for x in feature[1].keys()]):
