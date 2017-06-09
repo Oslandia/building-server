@@ -301,13 +301,7 @@ class GetScene(object):
     def run(self, args):
         city = args['city']
         layer = args['layer']
-        representationList = args['representations'].split(',')
-        weightList = args['weights'].split(',')
-
-        representations = []
-        for i in range(0, len(representationList)):
-            representations.append( (representationList[i], float(weightList[i])) )
-
+        rules = args['rules']
         # optional arguments
         maxDepth = args.get('maxdepth', None)
         tile = args.get('tile', None)
@@ -315,7 +309,7 @@ class GetScene(object):
         if (tile == None and depth != None) or (tile != None and depth == None):
             return Response("Tile and depth should either both be defined or both not defined", 400)
 
-        sceneBuilder = SceneBuilder(Session.db.cursor(), city, layer, representations)
+        sceneBuilder = SceneBuilder(Session.db.cursor(), city, layer, rules)
         json = sceneBuilder.build(maxDepth, tile, depth)
 
         resp = Response(json)

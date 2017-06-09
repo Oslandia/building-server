@@ -14,38 +14,9 @@ from psycopg2 import sql
 class RuleEngine(object):
 
     def __init__(self, ruleset):
-        #parse(ruleset)
-        self.default = {
-            0: ["lod1"],
-            1: ["lod1"],
-            2: ["lod1"],
-            #3: ["lod1"]
-        }
-        self.tileConditions = [
-            (
-                {
-                    'type': "zone",
-                    'center': [1844040, 5175290], # Part-dieu
-                    'radius': 500
-                },
-                {
-                    #2: ["lod1"],
-                    3: ["lod1"]
-                }
-            )
-        ]
-        self.featureConditions = [
-            (
-                {
-                    'type': "greater",
-                    'attribute': "height",
-                    'value': "50"
-                },
-                {
-                    1: ["lod2"]
-                }
-            )
-        ]
+        self.default = ruleset['default']
+        self.tileConditions = ruleset['tileConditions']
+        self.featureConditions = ruleset['featureConditions']
         self.tileIndex = {}
         self.tileFeatureIndex = {}
 
@@ -81,6 +52,7 @@ class RuleEngine(object):
                 )
             for t in cursor.fetchall():
                 if t[0] not in featureSet:
+                    # TODO: rework
                     featureSet.add(t[0])
                     if t[1] not in self.tileFeatureIndex:
                         self.tileFeatureIndex[t[1]] = []
@@ -102,11 +74,12 @@ class RuleEngine(object):
                     self.tileFeatureIndex[tileId].append((t[0], action))
 
     def resolveTile(self, tile, depth):
+        d = str(depth)
         if tile in self.tileIndex:
-            if depth in self.tileIndex[tile]:
-                return self.tileIndex[tile][depth]
+            if d in self.tileIndex[tile]:
+                return self.tileIndex[tile][d]
 
-        return self.default[depth] if depth in self.default else []
+        return self.default[d] if d in self.default else []
 
     def resolveFeatures(self, tile):
         if tile in self.tileFeatureIndex:
@@ -166,17 +139,20 @@ class Tile(object):
 
 class SceneBuilder():
 
-    def __init__(self, cursor, city, layer, representations):
+    def __init__(self, cursor, city, layer, rules):
         self.cursor = cursor
         self.city = city
         self.layer = layer
-        self.representations = representations
+        self.rulesString = rules
+
+        self.ruleEngine = RuleEngine(json.loads(rules))
+        self.ruleEngine.testTiles(cursor, city, layer)
+        self.ruleEngine.testFeatures(cursor, city, layer)
 
     def build(self, maxDepth, tile, startingDepth):
         cursor = self.cursor
         city = self.city
         layer = self.layer
-        representations = self.representations
 
         tileTable = utils.CitiesConfig.tileTable(city)
         tileHierarchy = utils.CitiesConfig.tileHierarchy(city)
@@ -185,12 +161,7 @@ class SceneBuilder():
         startingDepth = 0 if startingDepth == None else startingDepth
         tilesetContinuation = (tile != None)
         maxDepth = None if maxDepth == cityDepth - 1 else maxDepth  # maxDepth is pointless in this case (no speed gain and negligible size reduction)
-        customisationString = "representations={0}&weights={1}".format(",".join([a[0] for a in representations]), ",".join([str(a[1]) for a in representations]))
 
-        # TODO: move this to constructor
-        rules = RuleEngine(None)
-        rules.testTiles(cursor, city, layer)
-        #rules.testFeatures(cursor, city, layer)
 
         depthCondition = ""
         if maxDepth != None or startingDepth != None:
@@ -239,17 +210,17 @@ class SceneBuilder():
         def generateNodes(tile, id, depth, box, isFeature):
             # Find requested representations for the tile at this specific depth
             reps = []
-            for rep in rules.resolveTile(id, depth):
+            for rep in self.ruleEngine.resolveTile(id, depth):
                 a = utils.CitiesConfig.representation(city, layer, rep)
                 a["name"] = rep
                 reps.append(a)
 
-            features = rules.resolveFeatures(id)
+            features = self.ruleEngine.resolveFeatures(id)
 
             # Check if representation exists in the database for the tile
             tableId = 'featuretable' if isFeature else 'tiletable'
             for rep in reps:
-                fs = [f for f in features if any([depth >= x for x in f[1].keys()])]
+                fs = [f for f in features if any([depth >= int(x) for x in f[1].keys()])]
                 if tableId in rep:
                     table = rep[tableId]
                     if isFeature:
@@ -306,7 +277,7 @@ class SceneBuilder():
             root = Node(-1, -1, None, box, False)
             root.children = lvl0Nodes
 
-        return self.to3dTiles(root, customisationString)
+        return self.to3dTiles(root)
 
     def linkTiles(self, tree, allTiles, tileId):
         # Tile is a leaf: end recursion
@@ -371,15 +342,15 @@ class SceneBuilder():
         tileSet = { t[0] for t in self.cursor.fetchall() }
         return [t for t in tiles if t.id in tileSet]
 
-    def to3dTiles(self, root, customisationString):
+    def to3dTiles(self, root):
         tiles = {
             "asset": {"version" : "1.0"},
             "geometricError": 100,  # TODO: should reflect startingDepth
-            "root" : self.to3dTiles_r(root, customisationString, 10)[0]
+            "root" : self.to3dTiles_r(root, 10)[0]
         }
         return json.dumps(tiles)
 
-    def to3dTiles_r(self, node, customisationString, error):
+    def to3dTiles_r(self, node, error):
         # TODO : handle combined nodes
         (c1, c2) = node.box.corners()
         center = [(c1[i] + c2[i]) / 2 for i in range(0,3)]
@@ -393,13 +364,13 @@ class SceneBuilder():
                 "box": box
             },
             "geometricError": error, # TODO: keep or change?
-            "children": [elt for n in node.children for elt in self.to3dTiles_r(n, customisationString, error + 1)]
+            "children": [elt for n in node.children for elt in self.to3dTiles_r(n, error + 1)]
         }
         tiles.append(tile)
         if node.representation != None:
             if node.isLink:
                 tile["content"] = {
-                    "url": "getScene?city={0}&layer={1}&tile={2}&depth={3}&{4}".format(self.city, self.layer, node.id, node.depth, customisationString)
+                    "url": "getScene?city={0}&layer={1}&tile={2}&depth={3}&rules={4}".format(self.city, self.layer, node.id, node.depth, self.rulesString)
                 }
             else:
                 tile["content"] = {
@@ -412,25 +383,25 @@ class SceneBuilder():
                     tile["content"]["url"] += "&withoutFeatures="
                     tile["content"]["url"] += ",".join([str(f[0]) for f in node.features])
                     for feature in node.features:
-                        if all([node.depth <= x for x in feature[1].keys()]):
+                        if all([node.depth <= int(x) for x in feature[1].keys()]):
                             # New feature: create new branch in scene graph
                             # TODO: should be appended to the parent's children
-                            tiles.append(self.to3dTiles_feature(feature, customisationString, node.depth, error, box))
+                            tiles.append(self.to3dTiles_feature(feature, node.depth, error, box))
 
         else:
             tile["refine"] = "add"
         return tiles
 
-    def to3dTiles_feature(self, feature, customisationString, depth, error, box):
+    def to3dTiles_feature(self, feature, depth, error, box):
         tile = {
             "boundingVolume": {
                 "box": box  # TODO: compute real feature box
             },
             "geometricError": error, # TODO: keep or change?
             "content" : {
-                "url": "getFeature?city={0}&layer={1}&id={2}&representation={3}".format(self.city, self.layer, feature[0], feature[1][depth][0])
+                "url": "getFeature?city={0}&layer={1}&id={2}&representation={3}".format(self.city, self.layer, feature[0], feature[1][str(depth)][0])
             },
             "children": []
-            # TODO: "children": [cls.to3dTiles_feature(n, feature, layer, customisationString, error + 1)]
+            # TODO: "children": [cls.to3dTiles_feature(n, feature, layer, error + 1)]
         }
         return tile
