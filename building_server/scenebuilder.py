@@ -393,15 +393,24 @@ class SceneBuilder():
         return tiles
 
     def to3dTiles_feature(self, feature, depth, error, box):
+        representations = []
+        for depthLevel in feature[1]:
+            representations += feature[1][depthLevel]
+
+        return self.to3dTiles_feature_r(feature, depth, error, box, representations, 0)
+
+
+    def to3dTiles_feature_r(self, feature, depth, error, box, representations, representationIndex):
         tile = {
             "boundingVolume": {
                 "box": box  # TODO: compute real feature box
             },
             "geometricError": error, # TODO: keep or change?
             "content" : {
-                "url": "getFeature?city={0}&layer={1}&id={2}&representation={3}".format(self.city, self.layer, feature[0], feature[1][str(depth)][0])
-            },
-            "children": []
+                "url": "getFeature?city={0}&layer={1}&id={2}&representation={3}".format(self.city, self.layer, feature[0], representations[representationIndex])
+            }
             # TODO: "children": [cls.to3dTiles_feature(n, feature, layer, error + 1)]
         }
+        if representationIndex + 1 < len(representations):
+            tile["children"] = [self.to3dTiles_feature_r(feature, depth, error, box, representations, representationIndex + 1)]
         return tile
