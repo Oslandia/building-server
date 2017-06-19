@@ -226,6 +226,31 @@ class GetFeature(object):
             b3dm = B3dm.from_glTF(gltf)
             resp = Response(b3dm.to_array().tostring())
             resp.headers['Content-Type'] = 'application/octet-stream'
+        elif rep['datatype'] == '2.5D':
+            # TODO: use 3d-tiles formats
+            # TODO: use offset
+            offset = [0, 0, 0]
+            geoms = Session.feature_2_5D(city, offset, id, layer, representation)
+            
+            # build a features collection with extra properties if necessary
+            feature_collection = utils.FeatureCollection()
+            feature_collection.srs = utils.CitiesConfig.cities[city]['srs']
+            for geom in geoms:
+                properties = utils.PropertyCollection()
+                property = utils.Property('gid', '"{0}"'.format(geom['gid']))
+                properties.add(property)
+                property = utils.Property('zmin', '{0}'.format(geom['zmin']))
+                properties.add(property)
+                property = utils.Property('zmax', '{0}'.format(geom['zmax']))
+                properties.add(property)
+                f = utils.Feature(geom['gid'], properties, geom['geom'])
+                feature_collection.add(f)
+
+            # build the resulting json
+            json = feature_collection.geojson()
+
+            resp = Response(json)
+            resp.headers['Content-Type'] = 'text/plain'
 
 
         resp.headers['Access-Control-Allow-Origin'] = '*'
@@ -245,9 +270,6 @@ class GetTile(object):
         isFeature = (depth == len(CitiesConfig.scales(city)) - 1)
         gidOrTile = 'gid' if isFeature else 'tile'
 
-        # build a features collection with extra properties if necessary
-        feature_collection = utils.FeatureCollection()
-        feature_collection.srs = utils.CitiesConfig.cities[city]['srs']
 
         rep = utils.CitiesConfig.representation(city, layer, representation)
 
@@ -275,6 +297,10 @@ class GetTile(object):
             # TODO: use offset
             offset = [0, 0, 0]
             geoms = Session.tile_2_5D(city, offset, tile, isFeature, layer, representation, withoutFeatures, onlyTiles)
+
+            # build a features collection with extra properties if necessary
+            feature_collection = utils.FeatureCollection()
+            feature_collection.srs = utils.CitiesConfig.cities[city]['srs']
             for geom in geoms:
                 properties = utils.PropertyCollection()
                 property = utils.Property(gidOrTile, '"{0}"'.format(geom[gidOrTile]))

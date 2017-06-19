@@ -204,6 +204,40 @@ class Session():
         return res
 
     @classmethod
+    def feature_2_5D(cls, city, offset, id, layer, representation):
+        """Returns a list of geometries in string representation.
+
+        Parameters
+        ----------
+        city : str
+        offset : list
+            [x, y, z] as float
+        id : int
+        layer : str
+            'buildings'
+        representation : str
+            'lod1'
+
+        Returns
+        -------
+        res : list
+            List of OrderedDict with a 'gid', 'zmin', 'zmax' and a 'geom' key.
+
+            The 'geom' key is defined in geojson format such as
+            '{"type":"", "bbox":"","coordinates":[[[[x0, y0, z0], ...]]]}'
+        """
+
+        rep = CitiesConfig.representation(city, layer, representation)
+        table = rep["featuretable"]
+        query = ("SELECT gid, zmin, zmax, ST_AsGeoJSON(ST_Translate(geom, {2},"
+                 "{3}, {4}), 2, 1) AS geom FROM {0} WHERE gid={1}".format(table,
+                 id, -offset[0], -offset[1], -offset[2]))
+
+        res = cls.query_asdict(query)
+
+        return res
+
+    @classmethod
     def tile_2_5D(cls, city, offset, tile, isFeature, layer, representation, without, onlyTiles):
         """Returns a list of geometries in string representation.
 
@@ -236,20 +270,19 @@ class Session():
             condition = sql.SQL("tile='{0}'").format(sql.Literal(tile))
             if without is not None:
                 subCondition = sql.SQL(" OR ").join([sql.SQL("gid!={0}").format(sql.Literal(f)) for f in without.split(",")])
-                condition = sql.SQL("{0} AND {1}").format(condition, subCondition)
+                condition = sql.SQL("{0} AND ({1})").format(condition, subCondition)
             query = sql.SQL("WITH t AS (SELECT gid FROM {1} WHERE {2})"
                    "SELECT {0}.gid, zmin, zmax, ST_AsGeoJSON(geom,"
                    "2, 1) AS geom from {0} JOIN t ON {0}.gid=t.gid"
                    ).format(table, featureTable, condition)
         else:
-            table = cls.table_to_sql(rep["tiletable"])
+            tables = cls.table_to_sql(rep["tiletable"])
             geomSelection = sql.SQL("geom")
-            tables = table
             subqueries = []
             if without is not None:
                 featureTable = cls.table_to_sql(CitiesConfig.featureTable(city, layer))
                 geomSelection = sql.SQL("ST_Multi(ST_Difference({0}, feature_fp))").format(geomSelection)
-                tables = sql.SQL("{0}, t").format(table)
+                tables = sql.SQL("{0}, t").format(tables)
                 condition = sql.SQL(" OR ").join([sql.SQL("gid={0}").format(sql.Literal(f)) for f in without.split(",")])
                 subquery = sql.SQL("t AS (SELECT ST_Union(footprint) "
                             "AS feature_fp FROM {0} WHERE {1})"
@@ -258,7 +291,7 @@ class Session():
             if onlyTiles is not None:
                 tileTable = cls.table_to_sql(CitiesConfig.tileTable(city))
                 geomSelection = sql.SQL("ST_Multi(ST_Intersection({0}, tile_fp))").format(geomSelection)
-                tables = sql.SQL("{0}, d").format(table)
+                tables = sql.SQL("{0}, d").format(tables)
                 condition = sql.SQL(" OR ").join([sql.SQL("tile={0}").format(sql.Literal(t)) for t in onlyTiles.split(",")])
                 subquery = sql.SQL("d AS (SELECT ST_Union(footprint) "
                             "AS tile_fp FROM {0} WHERE {1})"
