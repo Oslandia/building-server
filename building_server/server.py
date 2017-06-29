@@ -184,7 +184,7 @@ class GetCity(object):
 
     def _to_3dtiles(self, root, city, dataFormat):
         tiles = {
-            "asset": {"version" : "1.0"},
+            "asset": {"version" : "1.0", "gltfUpAxis": "Z"},
             "geometricError": 500, # TODO
             "root" : self._to_3dtiles_r(root, city, dataFormat)
         }
