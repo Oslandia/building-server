@@ -31,9 +31,9 @@ class Session():
             [x, y, z] as float or None if no tile is found
         """
 
-        sql = ("SELECT bbox from {0}_bbox WHERE quadtile = '{1}'"
+        query = ("SELECT bbox from {0}_bbox WHERE quadtile = '{1}'"
                .format(CitiesConfig.table(city), tile))
-        res = cls.query_aslist(sql)
+        res = cls.query_aslist(query)
 
         offset = None
         if res:
@@ -66,12 +66,12 @@ class Session():
             '{"type":"", "bbox":"","coordinates":[[[[x0, y0, z0], ...]]]}'
         """
 
-        sql = ("SELECT gid, ST_AsGeoJSON(ST_Translate(geom,"
+        query = ("SELECT gid, ST_AsGeoJSON(ST_Translate(geom,"
                "{2},{3},{4}), 2, 1) AS geom from {0}"
                " WHERE quadtile='{1}'"
                .format(CitiesConfig.table(city), tile, -offset[0], -offset[1],
                        -offset[2]))
-        res = cls.query_asdict(sql)
+        res = cls.query_asdict(query)
 
         return res
 
@@ -91,11 +91,11 @@ class Session():
             List of OrderedDict with 'box3D' and 'binary' keys.
         """
 
-        sql = ("SELECT Box3D(geom) AS box, ST_AsBinary(ST_Translate(geom,"
+        query = ("SELECT Box3D(geom) AS box, ST_AsBinary(ST_Translate(geom,"
                "{2},{3},{4})) AS geom from {0}"
                " where quadtile='{1}'".format(CitiesConfig.table(city), tile,
                     -offset[0], -offset[1], -offset[2]))
-        res = cls.query_asdict(sql)
+        res = cls.query_asdict(query)
 
         return res
 
@@ -114,9 +114,9 @@ class Session():
         val : str
         """
 
-        sql = ("SELECT {0} FROM {1} WHERE gid = {2}"
+        query = ("SELECT {0} FROM {1} WHERE gid = {2}"
                .format(attribute, CitiesConfig.table(city), gid))
-        res = cls.query_asdict(sql)
+        res = cls.query_asdict(query)
 
         val = None
         if res:
@@ -146,10 +146,10 @@ class Session():
                 cond += " or "
             cond += "quadtile='{0}'".format(quadtile)
 
-        sql = ('SELECT quadtile, bbox from {0}_bbox where {1}'
+        query = ('SELECT quadtile, bbox from {0}_bbox where {1}'
                .format(CitiesConfig.table(city), cond))
 
-        return cls.query_asdict(sql)
+        return cls.query_asdict(query)
 
     @classmethod
     def tiles_for_level(cls, city, level):
@@ -168,10 +168,10 @@ class Session():
 
         regex = "{0}/".format(level)
 
-        sql = ("SELECT quadtile, bbox FROM {0}_bbox"
+        query = ("SELECT quadtile, bbox FROM {0}_bbox"
                " WHERE substr(quadtile,1,{1})='{2}'"
                .format(CitiesConfig.table(city), len(regex), regex))
-        return cls.query_asdict(sql)
+        return cls.query_asdict(query)
 
     @classmethod
     def get_all_tiles(cls, city):
@@ -187,9 +187,9 @@ class Session():
             List of OrderedDict with 'quadtile' and 'bbox' as keys
         """
 
-        sql = ("SELECT quadtile, bbox FROM {0}_bbox"
+        query = ("SELECT quadtile, bbox FROM {0}_bbox"
                .format(CitiesConfig.table(city)))
-        return cls.query_asdict(sql)
+        return cls.query_asdict(query)
 
     @classmethod
     def score_for_polygon(cls, city, pol, scoreFunction):
@@ -208,12 +208,12 @@ class Session():
             List of dict whith 'score', 'gid' and 'box3d' keys
         """
 
-        sql = ("SELECT gid, Box3D(geom), {0} as \"score\" FROM {1} "
+        query = ("SELECT gid, Box3D(geom), {0} as \"score\" FROM {1} "
                "WHERE (geom && 'POLYGON(({2}, {3}, {4}, {5}, {2}))'::geometry)"
                " ORDER BY score DESC"
                .format(scoreFunction, CitiesConfig.table(city), pol[0], pol[1], pol[2], pol[3]))
 
-        return cls.query_asdict(sql)
+        return cls.query_asdict(query)
 
     @classmethod
     def add_column(cls, city, column, typecol):
@@ -230,9 +230,9 @@ class Session():
         Nothing
         """
 
-        sql = ("ALTER TABLE {0} ADD COLUMN {1} {2}"
+        query = ("ALTER TABLE {0} ADD COLUMN {1} {2}"
                .format(CitiesConfig.table(city), column, typecol))
-        cls.db.cursor().execute(sql)
+        cls.db.cursor().execute(query)
 
     @classmethod
     def update_table(cls, city, quadtile, weight, gid):
@@ -250,9 +250,9 @@ class Session():
         Nothing
         """
 
-        sql = ("UPDATE {0} SET quadtile = '{1}', weight = {2} WHERE gid = {3}"
+        query = ("UPDATE {0} SET quadtile = '{1}', weight = {2} WHERE gid = {3}"
                .format(CitiesConfig.table(city), quadtile, weight, gid))
-        cls.db.cursor().execute(sql)
+        cls.db.cursor().execute(query)
 
     @classmethod
     def create_index(cls, city, column):
@@ -268,10 +268,10 @@ class Session():
         Nothing
         """
 
-        sql = ("CREATE INDEX tileIdx_{0} on {1} ({2})"
+        query = ("CREATE INDEX tileIdx_{0} on {1} ({2})"
                .format(CitiesConfig.table(city).replace(".", ""), CitiesConfig.table(city),
                        column))
-        cls.db.cursor().execute(sql)
+        cls.db.cursor().execute(query)
 
     @classmethod
     def create_bbox_table(cls, city):
@@ -286,9 +286,9 @@ class Session():
         Nothing
         """
 
-        sql = ("CREATE TABLE {0}_bbox (quadtile varchar(10) PRIMARY KEY"
+        query = ("CREATE TABLE {0}_bbox (quadtile varchar(10) PRIMARY KEY"
                ", bbox Box3D);".format(CitiesConfig.table(city)))
-        cls.db.cursor().execute(sql)
+        cls.db.cursor().execute(query)
 
     @classmethod
     def insert_into_bbox_table(cls, city, quadtile, bbox):
@@ -306,10 +306,10 @@ class Session():
         Nothing
         """
 
-        sql = ("INSERT INTO {0}_bbox values ('{1}', "
+        query = ("INSERT INTO {0}_bbox values ('{1}', "
                "Box3D(ST_GeomFromText('LINESTRING({2})')))"
                .format(CitiesConfig.table(city), quadtile, bbox))
-        cls.db.cursor().execute(sql)
+        cls.db.cursor().execute(query)
 
     @classmethod
     def drop_column(cls, city, column):
@@ -325,9 +325,9 @@ class Session():
         Nothing
         """
 
-        sql = ("ALTER TABLE {0} DROP COLUMN IF EXISTS {1}"
+        query = ("ALTER TABLE {0} DROP COLUMN IF EXISTS {1}"
                .format(CitiesConfig.table(city), column))
-        cls.db.cursor().execute(sql)
+        cls.db.cursor().execute(query)
 
     @classmethod
     def drop_bbox_table(cls, city):
@@ -342,9 +342,9 @@ class Session():
         Nothing
         """
 
-        sql = ("DROP TABLE IF EXISTS {0}_bbox;"
+        query = ("DROP TABLE IF EXISTS {0}_bbox;"
                .format(CitiesConfig.table(city)))
-        cls.db.cursor().execute(sql)
+        cls.db.cursor().execute(query)
 
     @classmethod
     def query(cls, query, parameters=None):
