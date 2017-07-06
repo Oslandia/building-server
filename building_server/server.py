@@ -121,56 +121,38 @@ class GetCity(object):
             dataFormat = 'b3dm'
 
         tiles = Session.get_all_tiles(city)
-        lvl0Tiles = Session.tiles_for_level(city, 0)
-
-        lvl0Nodes = []
-        for tile in lvl0Tiles:
-            node = {
-                'box': utils.Box3D(tile['bbox']),
-                'id': tile['quadtile'],
-                'depth': 0,
-                'children': []
-            }
-            lvl0Nodes.append(node)
-
-        if len(lvl0Tiles) == 1:
-            root = lvl0Nodes[0]
-        else:
-            pmin = [float("inf"), float("inf"), float("inf")]
-            pmax = [-float("inf"), -float("inf"), -float("inf")]
-            for n in lvl0Nodes:
-                corners = n['box'].corners()
-                pmin = [min(pmin[i], corners[0][i]) for i in range(0,3)]
-                pmax = [max(pmax[i], corners[1][i]) for i in range(0,3)]
-            box = 'Box3D({0},{1},{2},{3},{4},{5})'.format(*(pmin+pmax))
-            box = utils.Box3D(box)
-            root = {
-                'box': box,
-                'depth': 0,
-                'children': lvl0Nodes
-            }
+        hierarchy_tuples = Session.get_hierarchy(city)
 
         hierarchy = {}
-        for tile in tiles:
-            hierarchy[tile['quadtile']] = tile['bbox']
+        for t in hierarchy_tuples:
+            tile = t['tile']
+            child = t['child']
+            if tile not in hierarchy:
+                hierarchy[tile] = []
+            hierarchy[tile].append(child)
 
-        nodeQueue = []
-        nodeQueue = nodeQueue + lvl0Nodes
+        bboxIndex = {}
+        for t in tiles:
+            bboxIndex[t['tile']] = t['bbox']
+
+        root = {
+            'box': utils.Box3D(bboxIndex[0]),
+            'id': 0,
+            'depth': 0,
+            'children': []
+        }
+        nodeQueue = [root]
         while len(nodeQueue) != 0:
             parent = nodeQueue.pop(0)
             id = parent['id']
-            [z, y, x] = map(int, id.split("/"))
-            ids = [str(z+1) + "/" + str(2*y) + "/" + str(2*x),
-                   str(z+1) + "/" + str(2*y+1) + "/" + str(2*x),
-                   str(z+1) + "/" + str(2*y) + "/" + str(2*x+1),
-                   str(z+1) + "/" + str(2*y+1) + "/" + str(2*x+1)]
+            depth = parent['depth']
 
-            for t in ids:
-                if t in hierarchy:
+            if id in hierarchy:
+                for childId in hierarchy[id]:
                     node = {
-                        'box': utils.Box3D(hierarchy[t]),
-                        'id': t,
-                        'depth': z + 1,
+                        'box': utils.Box3D(bboxIndex[childId]),
+                        'id': childId,
+                        'depth': depth + 1,
                         'children': []
                     }
                     parent['children'].append(node)
@@ -205,7 +187,7 @@ class GetCity(object):
             "children": [self._to_3dtiles_r(n, city, dataFormat) for n in node['children']],
             "refine": "add"
         }
-        if 'id' in node:
+        if node['id'] != 0:
             tile["content"] = {
                 "url": "getGeometry?city={0}&tile={1}&format={2}".format(city, node['id'], dataFormat)
             }

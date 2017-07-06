@@ -28,6 +28,29 @@ def superbbox():
     return [[float("inf"), float("inf"), float("inf")],
             [-float("inf"), -float("inf"), -float("inf")]]
 
+def addPointsToBox(bbox, p1, p2):
+    bbox[0][0] = min(bbox[0][0], p1[0], p2[0])
+    bbox[0][1] = min(bbox[0][1], p1[1], p2[1])
+    bbox[0][2] = min(bbox[0][2], p1[2], p2[2])
+    bbox[1][0] = max(bbox[1][0], p1[0], p2[0])
+    bbox[1][1] = max(bbox[1][1], p1[1], p2[1])
+    bbox[1][2] = max(bbox[1][2], p1[2], p2[2])
+
+def addBoxToBox(superBbox, bbox):
+    superBbox[0][0] = min(superBbox[0][0], bbox[0][0])
+    superBbox[0][1] = min(superBbox[0][1], bbox[0][1])
+    superBbox[0][2] = min(superBbox[0][2], bbox[0][2])
+    superBbox[1][0] = max(superBbox[1][0], bbox[1][0])
+    superBbox[1][1] = max(superBbox[1][1], bbox[1][1])
+    superBbox[1][2] = max(superBbox[1][2], bbox[1][2])
+
+def counter(init):
+    count = init - 1
+    def f():
+        nonlocal count
+        count += 1
+        return count
+    return f
 
 def initDB(city, conf, scoref):
     extent = conf["extent"]
@@ -43,8 +66,11 @@ def initDB(city, conf, scoref):
     bboxIndex = {}
     t0 = time.time()
     qt = 0
+    nextId = counter(1)   # id 0 = root
 
     # create quadtree
+    lvl0Tiles = []
+    superBbox = superbbox()
     for i in range(0, int(math.ceil(extentX / maxTileSize))):
         for j in range(0, int(math.ceil(extentY / maxTileSize))):
             tileExtent = tile_extent(extent, maxTileSize, i, j)
@@ -72,61 +98,49 @@ def initDB(city, conf, scoref):
             if len(geoms) == 0:
                 continue
 
-            coord = "{0}/{1}/{2}".format(0, j, i)
+            tileId = nextId()
             if len(geoms) > featuresPerTile:
-                index[coord] = geoms[0:featuresPerTile]
-                bbox = divide(tileExtent,
-                              geoms[featuresPerTile:len(geoms)], 1, i * 2,
-                              j * 2, maxTileSize / 2., featuresPerTile, index,
-                              bboxIndex)
+                index[tileId] = geoms[0:featuresPerTile]
+                (bbox, c) = divide(tileExtent, geoms[featuresPerTile:len(geoms)],
+                                   tileId, maxTileSize / 2, featuresPerTile, index,
+                                   bboxIndex, nextId)
+                lvl0Tiles.append(c)
             else:
                 bbox = superbbox()
-                index[coord] = geoms
+                index[tileId] = geoms
 
-            for geom in index[coord]:
-                p1 = geom[3]
-                p2 = geom[4]
-                bbox[0][0] = min(bbox[0][0], p1[0], p2[0])
-                bbox[0][1] = min(bbox[0][1], p1[1], p2[1])
-                bbox[0][2] = min(bbox[0][2], p1[2], p2[2])
-                bbox[1][0] = max(bbox[1][0], p1[0], p2[0])
-                bbox[1][1] = max(bbox[1][1], p1[1], p2[1])
-                bbox[1][2] = max(bbox[1][2], p1[2], p2[2])
-            bboxIndex[coord] = bbox
+            for (_, _, _, p1, p2) in index[tileId]:
+                addPointsToBox(bbox, p1, p2)
+            addBoxToBox(superBbox, bbox)
+
+            bboxIndex[tileId] = bbox
+    index[0] = []
+    bboxIndex[0] = superBbox
+    tree = (0,  lvl0Tiles)
 
     print("Query time : {0}".format(qt))
     print("Quadtree creation total time : {0}".format(time.time() - t0))
 
     t1 = time.time()
-    # create index
-    Session.add_column(city, "quadtile", "varchar(10)")
-    Session.add_column(city, "weight", "real")
+    Session.create_hierarchy_tables(city)
 
-    for i in index:
-        for j in index[i]:
-            Session.update_table(city, i, j[2], j[0])
-
-    print("Table update time : {0}".format(time.time() - t1))
-    t2 = time.time()
-    Session.create_index(city, "quadtile")
-    print("Index creation time : {0}".format(time.time() - t2))
-
-    # create bbox table
-    t3 = time.time()
-    Session.create_bbox_table(city)
-
-    for i in bboxIndex:
-        b = bboxIndex[i]
+    for tileIndex in index:
+        b = bboxIndex[tileIndex]
         bbox_str = str(b[0][0]) + " " + str(b[0][1]) + " " + str(b[0][2]) \
             + "," + str(b[1][0]) + " " + str(b[1][1]) + " " + str(b[1][2])
-        Session.insert_into_bbox_table(city, i, bbox_str)
+        Session.insert_tile(city, tileIndex, bbox_str)
+        for feature in index[tileIndex]:
+            Session.insert_feature(city, feature[0], tileIndex)
 
-    print("Bounding box table creation time : {0}".format(time.time() - t3))
+    Session.insert_hierarchy(city, tree)
+
+    print("Table update time : {0}".format(time.time() - t1))
 
 
-def divide(extent, geometries, depth, xOffset, yOffset, tileSize,
-           featuresPerTile, index, bboxIndex):
+def divide(extent, geometries, tileId, tileSize,
+           featuresPerTile, index, bboxIndex, nextId):
     superBbox = superbbox()
+    children = []
 
     for i in range(0, 2):
         for j in range(0, 2):
@@ -139,34 +153,25 @@ def divide(extent, geometries, depth, xOffset, yOffset, tileSize,
             if len(geoms) == 0:
                 continue
 
-            coord = "{0}/{1}/{2}".format(depth, yOffset + j, xOffset + i)
+            childTileId = nextId()
             if len(geoms) > featuresPerTile:
-                index[coord] = geoms[0:featuresPerTile]
-                bbox = divide(tileExtent, geoms[featuresPerTile:len(geoms)],
-                              depth + 1, (xOffset + i) * 2, (yOffset + j) * 2,
-                              tileSize / 2., featuresPerTile, index, bboxIndex)
+                index[childTileId] = geoms[0:featuresPerTile]
+                (bbox, c) = divide(tileExtent,
+                                   geoms[featuresPerTile:len(geoms)], childTileId,
+                                   tileSize / 2, featuresPerTile, index,
+                                   bboxIndex, nextId)
+                children.append(c)
             else:
+                children.append((childTileId, []))
                 bbox = superbbox()
-                index[coord] = geoms
+                index[childTileId] = geoms
 
-            for geom in index[coord]:
-                p1 = geom[3]
-                p2 = geom[4]
-                bbox[0][0] = min(bbox[0][0], p1[0], p2[0])
-                bbox[0][1] = min(bbox[0][1], p1[1], p2[1])
-                bbox[0][2] = min(bbox[0][2], p1[2], p2[2])
-                bbox[1][0] = max(bbox[1][0], p1[0], p2[0])
-                bbox[1][1] = max(bbox[1][1], p1[1], p2[1])
-                bbox[1][2] = max(bbox[1][2], p1[2], p2[2])
-            bboxIndex[coord] = bbox
+            for (_, _, _, p1, p2) in index[childTileId]:
+                addPointsToBox(bbox, p1, p2)
+            bboxIndex[childTileId] = bbox
+            addBoxToBox(superBbox, bbox)
 
-            superBbox[0][0] = min(superBbox[0][0], bbox[0][0])
-            superBbox[0][1] = min(superBbox[0][1], bbox[0][1])
-            superBbox[0][2] = min(superBbox[0][2], bbox[0][2])
-            superBbox[1][0] = max(superBbox[1][0], bbox[1][0])
-            superBbox[1][1] = max(superBbox[1][1], bbox[1][1])
-            superBbox[1][2] = max(superBbox[1][2], bbox[1][2])
-    return superBbox
+    return (superBbox, (tileId, children))
 
 if __name__ == '__main__':
 
@@ -215,8 +220,9 @@ if __name__ == '__main__':
     cityconf = ymlconf_cities[args.city]
 
     # check if the configuration is well defined for the city
-    if (("tablename" not in cityconf) or ("extent" not in cityconf)
-            or ("maxtilesize" not in cityconf)):
+    if (("tiletable" not in cityconf) or ("geometrytable" not in cityconf)
+        or ("hierarchytable" not in cityconf) or ("featuretable" not in cityconf)
+        or ("extent" not in cityconf) or ("maxtilesize" not in cityconf)):
         print(("ERROR: '{0}' city is not properly defined in '{1}'"
               .format(args.city, args.cfg)))
         sys.exit()
@@ -228,9 +234,7 @@ if __name__ == '__main__':
     utils.CitiesConfig.init(str(args.cfg))
 
     # reinitialize the database
-    Session.drop_column(args.city, "quadtile")
-    Session.drop_column(args.city, "weight")
-    Session.drop_bbox_table(args.city)
+    Session.drop_hierarchy_tables(args.city)
 
     # fill the database
     initDB(args.city, cityconf, args.score)

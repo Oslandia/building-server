@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 
 from itertools import chain
-from psycopg2 import connect
+from psycopg2 import connect, sql
 from psycopg2.extras import NamedTupleCursor
 
 from .utils import CitiesConfig
 
+def table_to_sql(table):
+    return sql.SQL('.').join([sql.Identifier(x) for x in table.split('.')])
 
 class Session():
     """
@@ -17,13 +19,12 @@ class Session():
 
     @classmethod
     def offset(cls, city, tile):
-        """Returns a 3D offset for a specific tile
+        """Returns the center of a specific tile that can be used as an offset
 
         Parameters
         ----------
         city : str
-        tile : str
-            '6/22/28'
+        tile : int
 
         Returns
         -------
@@ -31,8 +32,8 @@ class Session():
             [x, y, z] as float or None if no tile is found
         """
 
-        query = ("SELECT bbox from {0}_bbox WHERE quadtile = '{1}'"
-               .format(CitiesConfig.table(city), tile))
+        query = sql.SQL("SELECT bbox from {0} WHERE tile = {1}").format(
+            table_to_sql(CitiesConfig.tile_table(city)), sql.Literal(tile))
         res = cls.query_aslist(query)
 
         offset = None
@@ -54,8 +55,7 @@ class Session():
         city : str
         offset : list
             [x, y, z] as float
-        tile : str
-            '6/22/28'
+        tile : int
 
         Returns
         -------
@@ -66,11 +66,13 @@ class Session():
             '{"type":"", "bbox":"","coordinates":[[[[x0, y0, z0], ...]]]}'
         """
 
-        query = ("SELECT gid, ST_AsGeoJSON(ST_Translate(geom,"
-               "{2},{3},{4}), 2, 1) AS geom from {0}"
-               " WHERE quadtile='{1}'"
-               .format(CitiesConfig.table(city), tile, -offset[0], -offset[1],
-                       -offset[2]))
+        query = sql.SQL("SELECT {0}.gid AS box, ST_AsGeoJSON("
+            "ST_Translate({0}.geom, {2},{3},{4})) AS geom FROM {0} INNER JOIN"
+            " {1} ON {0}.gid={1}.feature WHERE {1}.tile={5}").format(
+                table_to_sql(CitiesConfig.geometry_table(city)),
+                table_to_sql(CitiesConfig.feature_table(city)),
+                sql.Literal(-offset[0]), sql.Literal(-offset[1]),
+                sql.Literal(-offset[2]), sql.Literal(tile))
         res = cls.query_asdict(query)
 
         return res
@@ -82,8 +84,9 @@ class Session():
         Parameters
         ----------
         city : str
-        tile : str
-            '6/22/28'
+        offset : list
+            [x, y, z] as float
+        tile : int
 
         Returns
         -------
@@ -91,10 +94,13 @@ class Session():
             List of OrderedDict with 'box3D' and 'binary' keys.
         """
 
-        query = ("SELECT Box3D(geom) AS box, ST_AsBinary(ST_Translate(geom,"
-               "{2},{3},{4})) AS geom from {0}"
-               " where quadtile='{1}'".format(CitiesConfig.table(city), tile,
-                    -offset[0], -offset[1], -offset[2]))
+        query = sql.SQL("SELECT Box3D({0}.geom) AS box, ST_AsBinary("
+            "ST_Translate({0}.geom, {2},{3},{4})) AS geom FROM {0} INNER JOIN"
+            " {1} ON {0}.gid={1}.feature WHERE {1}.tile={5}").format(
+                table_to_sql(CitiesConfig.geometry_table(city)),
+                table_to_sql(CitiesConfig.feature_table(city)),
+                sql.Literal(-offset[0]), sql.Literal(-offset[1]),
+                sql.Literal(-offset[2]), sql.Literal(tile))
         res = cls.query_asdict(query)
 
         return res
@@ -184,11 +190,29 @@ class Session():
         Returns
         -------
         res : list
-            List of OrderedDict with 'quadtile' and 'bbox' as keys
+            List of OrderedDict with 'tile' and 'bbox' as keys
         """
 
-        query = ("SELECT quadtile, bbox FROM {0}_bbox"
-               .format(CitiesConfig.table(city)))
+        query = sql.SQL("SELECT tile, bbox FROM {0}").format(
+                table_to_sql(CitiesConfig.tile_table(city)))
+        return cls.query_asdict(query)
+
+    @classmethod
+    def get_hierarchy(cls, city):
+        """Returns the tile hierarchy defined in the database
+
+        Parameters
+        ----------
+        city : str
+
+        Returns
+        -------
+        res : list
+            List of OrderedDict with 'tile' and 'child' as keys
+        """
+
+        query = sql.SQL("SELECT tile, child FROM {0}").format(
+                table_to_sql(CitiesConfig.hierarchy_table(city)))
         return cls.query_asdict(query)
 
     @classmethod
@@ -208,74 +232,19 @@ class Session():
             List of dict whith 'score', 'gid' and 'box3d' keys
         """
 
-        query = ("SELECT gid, Box3D(geom), {0} as \"score\" FROM {1} "
-               "WHERE (geom && 'POLYGON(({2}, {3}, {4}, {5}, {2}))'::geometry)"
-               " ORDER BY score DESC"
-               .format(scoreFunction, CitiesConfig.table(city), pol[0], pol[1], pol[2], pol[3]))
+        polygon = "POLYGON(({0}, {1}, {2}, {3}, {0}))".format(
+                  pol[0], pol[1], pol[2], pol[3])
+        query = sql.SQL("SELECT gid, Box3D(geom), {0} as \"score\" FROM {1} "
+                "WHERE (geom && {2}::geometry) ORDER BY score DESC").format(
+                sql.SQL(scoreFunction),
+                table_to_sql(CitiesConfig.geometry_table(city)),
+                sql.Literal(polygon))
 
         return cls.query_asdict(query)
 
     @classmethod
-    def add_column(cls, city, column, typecol):
-        """Adds a column in table
-
-        Parameters
-        ----------
-        city : str
-        column : str
-        typecol : str
-
-        Returns
-        -------
-        Nothing
-        """
-
-        query = ("ALTER TABLE {0} ADD COLUMN {1} {2}"
-               .format(CitiesConfig.table(city), column, typecol))
-        cls.db.cursor().execute(query)
-
-    @classmethod
-    def update_table(cls, city, quadtile, weight, gid):
-        """Updates the table for a specific object
-
-        Parameters
-        ----------
-        city : str
-        quadtile : str
-        weight : str
-        gid : str
-
-        Returns
-        -------
-        Nothing
-        """
-
-        query = ("UPDATE {0} SET quadtile = '{1}', weight = {2} WHERE gid = {3}"
-               .format(CitiesConfig.table(city), quadtile, weight, gid))
-        cls.db.cursor().execute(query)
-
-    @classmethod
-    def create_index(cls, city, column):
-        """Creates an index on the column
-
-        Parameters
-        ----------
-        city : str
-        column : str
-
-        Returns
-        -------
-        Nothing
-        """
-
-        query = ("CREATE INDEX tileIdx_{0} on {1} ({2})"
-               .format(CitiesConfig.table(city).replace(".", ""), CitiesConfig.table(city),
-                       column))
-        cls.db.cursor().execute(query)
-
-    @classmethod
-    def create_bbox_table(cls, city):
-        """Creates the bbox city
+    def create_hierarchy_tables(cls, city):
+        """Creates the tables used to store the city organisation
 
         Parameters
         ----------
@@ -286,18 +255,40 @@ class Session():
         Nothing
         """
 
-        query = ("CREATE TABLE {0}_bbox (quadtile varchar(10) PRIMARY KEY"
-               ", bbox Box3D);".format(CitiesConfig.table(city)))
+        cursor = cls.db.cursor()
+        tileTable = CitiesConfig.tile_table(city)
+        featureTable = CitiesConfig.feature_table(city)
+        hierarchyTable = CitiesConfig.hierarchy_table(city)
+
+        # Create tables
+        query = sql.SQL("CREATE TABLE {0} (tile integer PRIMARY KEY"
+               ", bbox Box3D);").format(table_to_sql(tileTable))
+        cursor.execute(query)
+
+        query = sql.SQL("CREATE TABLE {0} (tile integer, child integer,"
+                        "PRIMARY KEY(tile, child));").format(
+                        table_to_sql(hierarchyTable))
+        cursor.execute(query)
+
+        query = sql.SQL("CREATE TABLE {0} (feature integer PRIMARY KEY"
+               ", tile integer);").format(table_to_sql(featureTable))
+        cursor.execute(query)
+
+        # Create index
+        # TODO: take schema into account for index name?
+        query = sql.SQL("CREATE INDEX {0} on {1} (tile)").format(
+                sql.Identifier(hierarchyTable.replace(".", "") + "idx"),
+                table_to_sql(hierarchyTable))
         cls.db.cursor().execute(query)
 
     @classmethod
-    def insert_into_bbox_table(cls, city, quadtile, bbox):
-        """Insert a new line in bbox table for the city
+    def insert_tile(cls, city, tileId, bbox):
+        """Insert a new line in the tile table for the city
 
         Parameters
         ----------
         city : str
-        quadtile : str
+        tileId : int
         bbox : str
             In linestring format
 
@@ -306,32 +297,60 @@ class Session():
         Nothing
         """
 
-        query = ("INSERT INTO {0}_bbox values ('{1}', "
-               "Box3D(ST_GeomFromText('LINESTRING({2})')))"
-               .format(CitiesConfig.table(city), quadtile, bbox))
+        bboxString = "LINESTRING({0})".format(bbox)
+        query = sql.SQL("INSERT INTO {0} values ({1}, Box3D(ST_GeomFromText({2})))").format(
+                table_to_sql(CitiesConfig.tile_table(city)),
+                sql.Literal(tileId), sql.Literal(bboxString))
         cls.db.cursor().execute(query)
 
     @classmethod
-    def drop_column(cls, city, column):
-        """Drops a column in the table
+    def insert_feature(cls, city, featureId, tileId):
+        """Insert a new line in the tile table for the city
 
         Parameters
         ----------
         city : str
-        column : str
+        featureId : int
+        tileId : int
 
         Returns
         -------
         Nothing
         """
 
-        query = ("ALTER TABLE {0} DROP COLUMN IF EXISTS {1}"
-               .format(CitiesConfig.table(city), column))
+        query = sql.SQL("INSERT INTO {0} values ({1}, {2})").format(
+               table_to_sql(CitiesConfig.feature_table(city)),
+               sql.Literal(featureId), sql.Literal(tileId))
         cls.db.cursor().execute(query)
 
     @classmethod
-    def drop_bbox_table(cls, city):
-        """Drops a table
+    def insert_hierarchy(cls, city, tree):
+        """Insert a tree in the hierarchy table
+
+        Parameters
+        ----------
+        city : str
+        tree : dict
+
+        Returns
+        -------
+        Nothing
+        """
+
+        def recurse(tile):
+            (tileId, children) = tile
+            for child in children:
+                query = sql.SQL("INSERT INTO {0} values ({1}, {2})").format(
+                        table_to_sql(CitiesConfig.hierarchy_table(city)),
+                        sql.Literal(tileId), sql.Literal(child[0]))
+                cls.db.cursor().execute(query)
+                recurse(child)
+
+        recurse(tree)
+
+    @classmethod
+    def drop_hierarchy_tables(cls, city):
+        """Drops the tables organising the data
 
         Parameters
         ----------
@@ -342,9 +361,19 @@ class Session():
         Nothing
         """
 
-        query = ("DROP TABLE IF EXISTS {0}_bbox;"
-               .format(CitiesConfig.table(city)))
-        cls.db.cursor().execute(query)
+        cursor = cls.db.cursor()
+
+        query = sql.SQL("DROP TABLE IF EXISTS {0}").format(
+                table_to_sql(CitiesConfig.tile_table(city)))
+        cursor.execute(query)
+
+        query = sql.SQL("DROP TABLE IF EXISTS {0}").format(
+                table_to_sql(CitiesConfig.feature_table(city)))
+        cursor.execute(query)
+
+        query = sql.SQL("DROP TABLE IF EXISTS {0}").format(
+                table_to_sql(CitiesConfig.hierarchy_table(city)))
+        cursor.execute(query)
 
     @classmethod
     def query(cls, query, parameters=None):

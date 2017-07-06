@@ -14,9 +14,30 @@ class CitiesConfig(object):
         cls.cities = yaml.load(content).get('cities', {})
 
     @classmethod
-    def table(cls, city):
+    def geometry_table(cls, city):
         if city in cls.cities:
-            return cls.cities[city]['tablename']
+            return cls.cities[city]['geometrytable']
+        else:
+            return None
+
+    @classmethod
+    def hierarchy_table(cls, city):
+        if city in cls.cities:
+            return cls.cities[city]['hierarchytable']
+        else:
+            return None
+
+    @classmethod
+    def tile_table(cls, city):
+        if city in cls.cities:
+            return cls.cities[city]['tiletable']
+        else:
+            return None
+
+    @classmethod
+    def feature_table(cls, city):
+        if city in cls.cities:
+            return cls.cities[city]['featuretable']
         else:
             return None
 
