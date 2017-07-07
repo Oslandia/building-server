@@ -101,6 +101,8 @@ class Session():
                 table_to_sql(CitiesConfig.feature_table(city)),
                 sql.Literal(-offset[0]), sql.Literal(-offset[1]),
                 sql.Literal(-offset[2]), sql.Literal(tile))
+
+        query = "WITH t AS (SELECT ST_Collect(ST_Translate(surface_geometry.geometry, {2},{3},{4})) AS geom FROM surface_geometry join thematic_surface on surface_geometry.root_id=thematic_surface.lod2_multi_surface_id join {0} on thematic_surface.building_id={0}.feature where {0}.tile={1} and surface_geometry.geometry is not null group by surface_geometry.root_id) SELECT Box3D(geom) AS box, ST_AsBinary(geom) as geom FROM t".format(CitiesConfig.feature_table(city), tile, -offset[0], -offset[1], -offset[2])
         res = cls.query_asdict(query)
 
         return res
@@ -239,6 +241,8 @@ class Session():
                 sql.SQL(scoreFunction),
                 table_to_sql(CitiesConfig.geometry_table(city)),
                 sql.Literal(polygon))
+
+        query = "select cityobject.id as gid, Box3D(cityobject.envelope), ST_Area(Box2D(cityobject.envelope)) as score from cityobject inner join building on cityobject.id=building.id where (St_centroid(cityobject.envelope) && '{2}'::geometry) order by score desc".format(scoreFunction, CitiesConfig.geometry_table(city), polygon)
 
         return cls.query_asdict(query)
 
