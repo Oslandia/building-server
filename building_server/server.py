@@ -6,7 +6,7 @@ from flask import Response
 from . import utils
 from .database import Session
 from .utils import CitiesConfig
-from py3dtiles import GlTF, B3dm
+from py3dtiles import GlTF, B3dm, TriangleSoup
 import json
 import numpy as np
 
@@ -88,11 +88,15 @@ class GetGeometry(object):
                 [0,0,1,offset[2]],
                 [0,0,0,1]], dtype=float)
             transform = transform.flatten('F')
+            geometries = []
             for geom in geombin:
-                wkbs.append(geom['geom'])
-                box = utils.Box3D(geom['box'])
-                boxes.append(box.asarray())
-            gltf = GlTF.from_wkb(wkbs, boxes, transform)
+                ts = TriangleSoup.from_wkb_multipolygon(geom['geom'])
+                geometries.append({
+                    'position': ts.getPositionArray(),
+                    'normal': ts.getNormalArray(),
+                    'bbox': utils.Box3D(geom['box']).asarray()
+                })
+            gltf = GlTF.from_binary_arrays(geometries, transform)
 
         b3dm = B3dm.from_glTF(gltf).to_array().tostring()
 
