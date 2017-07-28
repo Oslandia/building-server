@@ -108,6 +108,36 @@ class Session():
         return res
 
     @classmethod
+    def tile_textured_geom_binary(cls, city, tile, offset):
+        """Returns a list of geometries in binary representation
+
+        Parameters
+        ----------
+        city : str
+        offset : list
+            [x, y, z] as float
+        tile : int
+
+        Returns
+        -------
+        res : list
+            List of OrderedDict with 'box3D' and 'binary' keys.
+        """
+
+        query = """WITH t AS (SELECT thematic_surface.building_id AS id, ST_Collect(ST_Translate(surface_geometry.geometry, {2},{3},{4})) AS geom, ST_Collect(textureparam.texture_coordinates) AS uv, tex_image.tex_image_data as tex
+        FROM surface_geometry
+        join thematic_surface on surface_geometry.root_id=thematic_surface.lod2_multi_surface_id
+        join textureparam on textureparam.surface_geometry_id=surface_geometry.id
+        join {0} on thematic_surface.building_id={0}.feature
+        join surface_data on surface_data.id=textureparam.surface_data_id
+        join tex_image on tex_image.id=surface_data.tex_image_id
+        where {0}.tile={1} and surface_geometry.geometry is not null group by thematic_surface.building_id, tex_image.tex_image_data) SELECT id, Box3D(geom) AS box, ST_AsBinary(geom) as geom, ST_AsBinary(uv) as uv, tex FROM t""".format(CitiesConfig.feature_table(city), tile, -offset[0], -offset[1], -offset[2])
+        # print(query)
+        res = cls.query_asdict(query)
+
+        return res
+
+    @classmethod
     def attribute_for_gid(cls, city, gid, attribute):
         """Returns a value for the attribute of the specific gid object
 

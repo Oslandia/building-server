@@ -9,6 +9,8 @@ from .utils import CitiesConfig
 from py3dtiles import GlTF, B3dm, TriangleSoup
 import json
 import numpy as np
+from wand.image import Image
+from .texture_atlas import Atlas2Atlas
 
 
 class GetGeometry(object):
@@ -73,7 +75,7 @@ class GetGeometry(object):
 
         # get geom as binary
         offset = Session.offset(city, tile)
-        geombin = Session.tile_geom_binary(city, tile, offset)
+        geombin = Session.tile_textured_geom_binary(city, tile, offset)
 
         output = ""
         if not geombin:
@@ -89,14 +91,35 @@ class GetGeometry(object):
                 [0,0,0,1]], dtype=float)
             transform = transform.flatten('F')
             geometries = []
+            uvs = []
+            textures = []
+            geombin = [geombin[0]]
             for geom in geombin:
-                ts = TriangleSoup.from_wkb_multipolygon(geom['geom'])
+                ts = TriangleSoup.from_wkb_multipolygon(geom['geom'], [geom['uv']])
+                #print(ts.getDataArray(0))
+                #print(np.array(ts.getDataArray(0)))
+                #print(np.array(ts.getDataArray(0)).flatten())
+                uv = ts.getDataArray(0)
+                uvs.append(np.array(uv).flatten())
+                #uvs.append(np.frombuffer(ts.getDataArray(0), dtype=float))
+                #fileName = '/media/data/Backup villes/VILLEURBANNE_2012/' + geom['tex']
+                textures.append(Image(blob=geom['tex']))
+
+
                 geometries.append({
                     'position': ts.getPositionArray(),
                     'normal': ts.getNormalArray(),
-                    'bbox': utils.Box3D(geom['box']).asarray()
+                    'bbox': utils.Box3D(geom['box']).asarray(),
+                    'uv': b''.join(uv)
                 })
+
+            atlas = Atlas2Atlas.from_texture_uv_array(textures, uvs)
+            for i, uv in enumerate(uvs):
+                atlas.transformUV(uv, i)
+
             gltf = GlTF.from_binary_arrays(geometries, transform)
+            f = open("test.glb", 'wb')
+            f.write(gltf.to_array())
 
         b3dm = B3dm.from_glTF(gltf).to_array().tostring()
 
