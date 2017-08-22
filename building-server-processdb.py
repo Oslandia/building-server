@@ -82,9 +82,11 @@ def initDB(city, conf, scoref):
             poly = [p0, p1, p2, p3]
 
             qt0 = time.time()
+            # Gets all polygons' id, box3d and score
             scores = Session.score_for_polygon(city, poly, scoref)
             qt += time.time() - qt0
 
+            # Adds geometries with their centroid inside the current tile to the tile
             geoms = []
             for score in scores:
                 box3D = utils.Box3D(score['box3d'])
@@ -98,7 +100,13 @@ def initDB(city, conf, scoref):
             if len(geoms) == 0:
                 continue
 
-            tileId = nextId()
+            # if there is too much features in the current tile, it is subdivided
+            # in subtiles. The tiles with the highest scores go into the parent tile
+            # and the ones with the lowest scores go into the children tiles.
+            # There is no mention of score into the subdivision process because
+            # we use the fact that they are already sorted in descending order
+            # (done in score_for_polygon function of database.py)
+            tileId = nextId() # generation of a unique id
             if len(geoms) > featuresPerTile:
                 index[tileId] = geoms[0:featuresPerTile]
                 (bbox, c) = divide(tileExtent, geoms[featuresPerTile:len(geoms)],
