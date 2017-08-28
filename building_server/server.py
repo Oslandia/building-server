@@ -10,7 +10,10 @@ from py3dtiles import GlTF, B3dm
 import json
 import numpy as np
 
+# This file holds the functions of the rest API
 
+# Returns the geometry of a tile
+# args : city ; tile ; format ; attributes
 class GetGeometry(object):
 
     def run(self, args):
@@ -110,7 +113,8 @@ class GetCities(object):
 
         return resp
 
-
+# Returns a 3D-tiles tileset
+# args are : city ; format
 class GetCity(object):
 
     def run(self, args):
@@ -123,6 +127,9 @@ class GetCity(object):
         tiles = Session.get_all_tiles(city)
         hierarchy_tuples = Session.get_hierarchy(city)
 
+        # Construct hierarchy of tiles
+        # hierarchy is a dictionnary with id of tile as key and a list of its ids
+        # of its children as value.
         hierarchy = {}
         for t in hierarchy_tuples:
             tile = t['tile']
@@ -135,12 +142,17 @@ class GetCity(object):
         for t in tiles:
             bboxIndex[t['tile']] = t['bbox']
 
+        # Create root node
         root = {
             'box': utils.Box3D(bboxIndex[0]),
             'id': 0,
             'depth': 0,
             'children': []
         }
+
+        # Construction of the tiles hierarchy (each tile being a node in the
+        # form of 'root' defined above) by browsing it from the root to the leaves.
+        # nodeQueue is a list containing the remaining nodes to browse
         nodeQueue = [root]
         while len(nodeQueue) != 0:
             parent = nodeQueue.pop(0)
@@ -148,6 +160,7 @@ class GetCity(object):
             depth = parent['depth']
 
             if id in hierarchy:
+                # create node for each children and append them to their parent node
                 for childId in hierarchy[id]:
                     node = {
                         'box': utils.Box3D(bboxIndex[childId]),
@@ -158,7 +171,7 @@ class GetCity(object):
                     parent['children'].append(node)
                     nodeQueue.append(node)
 
-
+        # Construct 3d-tiles hierarchy from the hierarchy created above (root)
         resp = Response(self._to_3dtiles(root, city, dataFormat))
         resp.headers['Access-Control-Allow-Origin'] = '*'
         resp.headers['Content-Type'] = 'text/plain'
@@ -181,7 +194,7 @@ class GetCity(object):
         box = center + xAxis + yAxis + zAxis
         tile = {
             "boundingVolume": {
-                "box": box
+                "box": box,
             },
             "geometricError": 500 / (node['depth'] + 1), # TODO
             "children": [self._to_3dtiles_r(n, city, dataFormat) for n in node['children']],

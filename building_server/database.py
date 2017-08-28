@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+# This file contains functions that run queries to the database (database API)
+
 from itertools import chain
 from psycopg2 import connect, sql
 from psycopg2.extras import NamedTupleCursor
@@ -94,15 +96,18 @@ class Session():
             List of OrderedDict with 'box3D' and 'binary' keys.
         """
 
-        query = sql.SQL("SELECT Box3D({0}.geom) AS box, ST_AsBinary("
-            "ST_Translate({0}.geom, {2},{3},{4})) AS geom FROM {0} INNER JOIN"
-            " {1} ON {0}.gid={1}.feature WHERE {1}.tile={5}").format(
-                table_to_sql(CitiesConfig.geometry_table(city)),
-                table_to_sql(CitiesConfig.feature_table(city)),
-                sql.Literal(-offset[0]), sql.Literal(-offset[1]),
-                sql.Literal(-offset[2]), sql.Literal(tile))
+        query = sql.SQL("WITH t AS (SELECT ST_Collect(ST_Translate({0}.geometry"
+                        ",{3},{4},{5})) AS geom FROM {0} join thematic_surface "
+                        "on {0}.root_id=thematic_surface.lod2_multi_surface_id "
+                        "join {1} on thematic_surface.building_id={1}.feature "
+                        "where {1}.tile={2} and {0}.geometry is not null "
+                        "group by {0}.root_id) SELECT Box3D(geom) AS box, "
+                        "ST_AsBinary(geom) as geom FROM t").format(
+                        table_to_sql(CitiesConfig.geometry_table(city)),
+                        table_to_sql(CitiesConfig.feature_table(city)),
+                        sql.Literal(tile), sql.Literal(-offset[0]), sql.Literal(-offset[1]),
+                        sql.Literal(-offset[2]))
 
-        query = "WITH t AS (SELECT ST_Collect(ST_Translate(surface_geometry.geometry, {2},{3},{4})) AS geom FROM surface_geometry join thematic_surface on surface_geometry.root_id=thematic_surface.lod2_multi_surface_id join {0} on thematic_surface.building_id={0}.feature where {0}.tile={1} and surface_geometry.geometry is not null group by surface_geometry.root_id) SELECT Box3D(geom) AS box, ST_AsBinary(geom) as geom FROM t".format(CitiesConfig.feature_table(city), tile, -offset[0], -offset[1], -offset[2])
         res = cls.query_asdict(query)
 
         return res
@@ -231,16 +236,11 @@ class Session():
         Returns
         -------
         result : list
-            List of dict whith 'score', 'gid' and 'box3d' keys
+            List of dict whith 'score', 'gid', 'box3d' keys
         """
 
         polygon = "POLYGON(({0}, {1}, {2}, {3}, {0}))".format(
                   pol[0], pol[1], pol[2], pol[3])
-        query = sql.SQL("SELECT gid, Box3D(geom), {0} as \"score\" FROM {1} "
-                "WHERE (geom && {2}::geometry) ORDER BY score DESC").format(
-                sql.SQL(scoreFunction),
-                table_to_sql(CitiesConfig.geometry_table(city)),
-                sql.Literal(polygon))
 
         query = "select cityobject.id as gid, Box3D(cityobject.envelope), ST_Area(Box2D(cityobject.envelope)) as score from cityobject inner join building on cityobject.id=building.id where (St_centroid(cityobject.envelope) && '{2}'::geometry) order by score desc".format(scoreFunction, CitiesConfig.geometry_table(city), polygon)
 
