@@ -21,8 +21,8 @@ class RuleEngine(object):
         self.tileFeatureIndex = {}
 
     def testTiles(self, cursor, city, layer):
-        srid = 3946 # TODO: get from config file
         tileTable = utils.CitiesConfig.tileTable(city)
+        srid = utils.CitiesConfig.srid(city)
         for tc in self.tileConditions:
             condition = tc[0]
             action = tc[1]
@@ -37,41 +37,37 @@ class RuleEngine(object):
                     self.tileIndex[t[0]] = action
 
 
-    def testFeatures(self, cursor, city, layer):
-        srid = 3946 # TODO: get from config file
+    def testFeatures(self, cursor, city, layer, depth):
         featureTable = utils.CitiesConfig.featureTable(city, layer)
+        hierarchyTable = utils.CitiesConfig.tileHierarchy(city)
         featureSet = set()
         for fc in self.featureConditions:
             condition = fc[0]
             action = fc[1]
             if condition['type'] == "greater":
                 cursor.execute(
-                    sql.SQL("SELECT gid, tile FROM {} WHERE {}>%s")
+                    sql.SQL("SELECT gid, tile FROM {} WHERE {}>=%s")
                         .format(sql.SQL('.').join([sql.Identifier(a) for a in featureTable.split('.')]), sql.Identifier(condition['attribute'])),
                     [float(condition['value'])]
                 )
             for t in cursor.fetchall():
+                # Check if feature was already affected by a rule
                 if t[0] not in featureSet:
-                    # TODO: rework
                     featureSet.add(t[0])
+
                     if t[1] not in self.tileFeatureIndex:
                         self.tileFeatureIndex[t[1]] = []
                     self.tileFeatureIndex[t[1]].append((t[0], action))
-                    cursor.execute("SELECT tile FROM test.hierarchy WHERE child=" + str(t[1]))
-                    tileId = cursor.fetchall()[0][0]
-                    if tileId not in self.tileFeatureIndex:
-                        self.tileFeatureIndex[tileId] = []
-                    self.tileFeatureIndex[tileId].append((t[0], action))
-                    cursor.execute("SELECT tile FROM test.hierarchy WHERE child=" + str(tileId))
-                    tileId = cursor.fetchall()[0][0]
-                    if tileId not in self.tileFeatureIndex:
-                        self.tileFeatureIndex[tileId] = []
-                    self.tileFeatureIndex[tileId].append((t[0], action))
-                    cursor.execute("SELECT tile FROM test.hierarchy WHERE child=" + str(tileId))
-                    tileId = cursor.fetchall()[0][0]
-                    if tileId not in self.tileFeatureIndex:
-                        self.tileFeatureIndex[tileId] = []
-                    self.tileFeatureIndex[tileId].append((t[0], action))
+                    # Find all the ancestors of t[1]
+                    tileId = t[1]
+                    for i in range(depth - 1):
+                        cursor.execute(
+                            sql.SQL("SELECT tile FROM {} WHERE child=%s")
+                                .format(sql.SQL('.').join([sql.Identifier(a) for a in hierarchyTable.split('.')])), [float(tileId)])
+                        tileId = cursor.fetchone()[0]
+                        if tileId not in self.tileFeatureIndex:
+                            self.tileFeatureIndex[tileId] = []
+                        self.tileFeatureIndex[tileId].append((t[0], action))
 
     def resolveTile(self, tile, depth):
         d = str(depth)
@@ -144,10 +140,11 @@ class SceneBuilder():
         self.city = city
         self.layer = layer
         self.rulesString = rules
+        self.cityDepth = len(utils.CitiesConfig.scales(city)) - 1
 
         self.ruleEngine = RuleEngine(json.loads(rules))
         self.ruleEngine.testTiles(cursor, city, layer)
-        self.ruleEngine.testFeatures(cursor, city, layer)
+        self.ruleEngine.testFeatures(cursor, city, layer, self.cityDepth)
 
     def build(self, maxDepth, tile, startingDepth):
         cursor = self.cursor
@@ -157,10 +154,9 @@ class SceneBuilder():
         tileTable = utils.CitiesConfig.tileTable(city)
         tileHierarchy = utils.CitiesConfig.tileHierarchy(city)
         featureTable = utils.CitiesConfig.featureTable(city, layer)
-        cityDepth = len(utils.CitiesConfig.scales(city)) - 1
         startingDepth = 0 if startingDepth == None else startingDepth
         tilesetContinuation = (tile != None)
-        maxDepth = None if maxDepth == cityDepth - 1 else maxDepth  # maxDepth is pointless in this case (no speed gain and negligible size reduction)
+        maxDepth = None if maxDepth == self.cityDepth - 1 else maxDepth  # maxDepth is pointless in this case (no speed gain and negligible size reduction)
 
 
         depthCondition = ""
@@ -248,8 +244,9 @@ class SceneBuilder():
             generateNodes(tile, id, depth, box, False)
 
             # Generate feature-level tile too if we're at the last tile depth
-            if depth + 1 == cityDepth and (maxDepth == None or depth + 1 <= maxDepth):
+            if depth + 1 == self.cityDepth and (maxDepth == None or depth + 1 <= maxDepth):
                 generateNodes(tile, id, depth + 1, box, True)
+
 
         # Linking nodes
         lvl0Nodes = []

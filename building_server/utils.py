@@ -47,6 +47,11 @@ class CitiesConfig(object):
     def scales(cls, city):
         return cls.cities.get(city, {}).get('scales', None)
 
+    @classmethod
+    def srid(cls, city):
+        srs = cls.cities.get(city, {}).get('srs', None)
+        return None if srs is None else srs.split(':')[-1]
+
 
 class Box3D(object):
 
