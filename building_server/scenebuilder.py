@@ -27,11 +27,20 @@ class RuleEngine(object):
             condition = tc[0]
             action = tc[1]
             if condition['type'] == "zone":
-                cursor.execute(
-                    sql.SQL("SELECT tile FROM {} WHERE ST_Intersects(footprint, ST_Buffer(ST_GeomFromText('POINT(%s %s)', %s), %s))")
-                        .format(sql.SQL('.').join([sql.Identifier(a) for a in tileTable.split('.')])),
-                    [condition['center'][0], condition['center'][1], srid, condition['radius']]
-                )
+                if 'center' in condition:
+                    cursor.execute(
+                        sql.SQL("SELECT tile FROM {} WHERE ST_Intersects(footprint, ST_Buffer(ST_GeomFromText('POINT(%s %s)', %s), %s))")
+                            .format(sql.SQL('.').join([sql.Identifier(a) for a in tileTable.split('.')])),
+                        [condition['center'][0], condition['center'][1], srid, condition['radius']]
+                    )
+                elif 'points' in condition:
+                    linestring = 'LINESTRING({})'.format(
+                        ','.join([' '.join([str(coord) for coord in pt]) for pt in condition['points']]))
+                    cursor.execute(
+                        sql.SQL("SELECT tile FROM {} WHERE ST_Intersects(footprint, ST_Buffer(ST_GeomFromText(%s, %s), %s))")
+                            .format(sql.SQL('.').join([sql.Identifier(a) for a in tileTable.split('.')])),
+                        [linestring, srid, condition['radius']]
+                    )
             for t in cursor.fetchall():
                 if t[0] not in self.tileIndex:
                     self.tileIndex[t[0]] = action
