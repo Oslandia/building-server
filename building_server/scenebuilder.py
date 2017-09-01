@@ -122,9 +122,10 @@ class Node(object):
 # has a different representation
 class Tile(object):
 
-    def __init__(self, id, depth):
+    def __init__(self, id, depth, bbox):
         self.id = id
         self.depth = depth
+        self.bbox = bbox
         self.nodes = []
         self.children = []
         self.missingTiles = []
@@ -212,8 +213,13 @@ class SceneBuilder():
         cursor.execute(query)
         rows = cursor.fetchall()
 
-        def generateNodes(tile, id, depth, box, isFeature):
+        tqt = 0
+
+        def generateNodes(tile, tileRepresentationSet, isFeature):
             # Find requested representations for the tile at this specific depth
+            id = tile.id
+            depth = tile.depth if not isFeature else tile.depth + 1
+            box = tile.bbox
             reps = []
             for rep in self.ruleEngine.resolveTile(id, depth):
                 a = utils.CitiesConfig.representation(city, layer, rep)
@@ -223,38 +229,67 @@ class SceneBuilder():
             features = self.ruleEngine.resolveFeatures(id)
 
             # Check if representation exists in the database for the tile
-            tableId = 'featuretable' if isFeature else 'tiletable'
             for rep in reps:
                 fs = [f for f in features if any([depth >= int(x) for x in f[1].keys()])]
-                if tableId in rep:
-                    table = rep[tableId]
-                    if isFeature:
-                        query = "WITH t AS (SELECT gid FROM {1} WHERE tile={2}) SELECT {0}.gid FROM {0} INNER JOIN t ON {0}.gid=t.gid LIMIT 1".format(table, featureTable, id)
-                    else:
-                        query = "SELECT tile FROM {0} WHERE tile={1}".format(table, id)
-                    cursor.execute(query)
-                    if cursor.rowcount != 0:
-                        score = (1 + depth) #TODO: Temp
-                        node = Node(id, depth, rep["name"], box, False)
-                        node.features = fs;
-                        tile.append(node)
+                if (id, rep["name"]) in tileRepresentationSet:
+                    score = (1 + depth) #TODO: Temp
+                    node = Node(id, depth, rep["name"], box, False)
+                    node.features = fs;
+                    tile.append(node)
 
             if depth == startingDepth:
                 lvl0Tiles.append(id)
 
+        def tileToRepresentation(tile, rep2tile, isFeature):
+            # Find requested representations for the tile at this specific depth
+            id = tile.id
+            depth = tile.depth if not isFeature else tile.depth + 1
+            reps = []
+            for rep in self.ruleEngine.resolveTile(id, depth):
+                if rep not in rep2tile:
+                    rep2tile[rep] = []
+                rep2tile[rep].append(str(id))
+
+        rep2tile = {}
+        rep2featuretile = {}
         for (id, depth, bbox) in rows if tile == None else [t for t in rows if t[0] in tileList]:
+            # Instantiate tiles
             box = None
             if bbox != None:
                 box = utils.Box3D(bbox)
-
-            tile = Tile(id, depth)
+            tile = Tile(id, depth, box)
             tiles[id] = tile
 
-            generateNodes(tile, id, depth, box, False)
+            # Find representation for each tile
+            # Create a list of every tile using a representation
+            tileToRepresentation(tile, rep2tile, False)
+            if depth + 1 == self.cityDepth and (maxDepth == None or depth + 1 <= maxDepth):
+                tileToRepresentation(tile, rep2featuretile, True)
+
+
+        # Check if tile has required representation
+        tileRepresentationSet = set()
+        for rep, tileList in rep2tile.items():
+            table = utils.CitiesConfig.representation(city, layer, rep)['tiletable']
+            query = "SELECT tile FROM {0} WHERE tile IN ({1})".format(table, ','.join(tileList))
+            cursor.execute(query)
+            repTileList = [(t[0], rep) for t in cursor.fetchall()]
+            tileRepresentationSet.update(repTileList)
+        # Same for feature tiles
+        featureTileRepresentationSet = set()
+        for rep, tileList in rep2featuretile.items():
+            table = utils.CitiesConfig.representation(city, layer, rep)['featuretable']
+            query = "WITH t AS (SELECT gid, tile FROM {1} WHERE tile IN ({2})) SELECT DISTINCT t.tile FROM {0} INNER JOIN t ON {0}.gid=t.gid".format(table, featureTable, ','.join(tileList))
+            cursor.execute(query)
+            repTileList = [(t[0], rep) for t in cursor.fetchall()]
+            featureTileRepresentationSet.update(repTileList)
+
+        for tile in tiles.values():
+            generateNodes(tile, tileRepresentationSet, False)
 
             # Generate feature-level tile too if we're at the last tile depth
-            if depth + 1 == self.cityDepth and (maxDepth == None or depth + 1 <= maxDepth):
-                generateNodes(tile, id, depth + 1, box, True)
+            if tile.depth + 1 == self.cityDepth and (maxDepth == None or tile.depth + 1 <= maxDepth):
+                generateNodes(tile, featureTileRepresentationSet, True)
 
 
         # Linking nodes
