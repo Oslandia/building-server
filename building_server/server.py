@@ -8,7 +8,7 @@ from .database import Session
 from .transcode import toglTF
 from .utils import CitiesConfig, Box3D
 from .scenebuilder import SceneBuilder
-from py3dtiles import GlTF, B3dm
+from py3dtiles import GlTF, B3dm, TriangleSoup
 import numpy as np
 
 
@@ -210,8 +210,7 @@ class GetFeature(object):
         if rep['datatype'] == 'polyhedralsurface':
             offset = Session.feature_center(city, id, layer, representation)
             geoms = Session.feature_polyhedral(city, offset, id, layer, representation)
-            wkbs = []
-            boxes = []
+            arrays = []
             transform = np.array([
                 [1,0,0,offset[0]],
                 [0,1,0,offset[1]],
@@ -219,10 +218,13 @@ class GetFeature(object):
                 [0,0,0,1]], dtype=float)
             transform = transform.flatten('F')
             for geom in geoms:
-                wkbs.append(geom['geom'])
-                box = Box3D(geom['box'])
-                boxes.append(box.asarray())
-            gltf = GlTF.from_wkb(wkbs, boxes, transform)
+                ts = TriangleSoup.from_wkb_multipolygon(geom['geom'])
+                arrays.append({
+                    'position': ts.getPositionArray(),
+                    'normal': ts.getNormalArray(),
+                    'bbox': Box3D(geom['box']).asarray()
+                })
+            gltf = GlTF.from_binary_arrays(arrays, transform)
             b3dm = B3dm.from_glTF(gltf)
             resp = Response(b3dm.to_array().tostring())
             resp.headers['Content-Type'] = 'application/octet-stream'
@@ -231,7 +233,7 @@ class GetFeature(object):
             # TODO: use offset
             offset = [0, 0, 0]
             geoms = Session.feature_2_5D(city, offset, id, layer, representation)
-            
+
             # build a features collection with extra properties if necessary
             feature_collection = utils.FeatureCollection()
             feature_collection.srs = utils.CitiesConfig.cities[city]['srs']
@@ -276,8 +278,7 @@ class GetTile(object):
         if rep['datatype'] == 'polyhedralsurface':
             offset = Session.tile_center(city, tile, layer, representation)
             geoms = Session.tile_polyhedral(city, offset, tile, isFeature, layer, representation, withoutFeatures, onlyTiles)
-            wkbs = []
-            boxes = []
+            arrays = []
             transform = np.array([
                 [1,0,0,offset[0]],
                 [0,1,0,offset[1]],
@@ -285,10 +286,13 @@ class GetTile(object):
                 [0,0,0,1]], dtype=float)
             transform = transform.flatten('F')
             for geom in geoms:
-                wkbs.append(geom['geom'])
-                box = Box3D(geom['box'])
-                boxes.append(box.asarray())
-            gltf = GlTF.from_wkb(wkbs, boxes, transform)
+                ts = TriangleSoup.from_wkb_multipolygon(geom['geom'])
+                arrays.append({
+                    'position': ts.getPositionArray(),
+                    'normal': ts.getNormalArray(),
+                    'bbox': Box3D(geom['box']).asarray()
+                })
+            gltf = GlTF.from_binary_arrays(arrays, transform)
             b3dm = B3dm.from_glTF(gltf)
             resp = Response(b3dm.to_array().tostring())
             resp.headers['Content-Type'] = 'application/octet-stream'
