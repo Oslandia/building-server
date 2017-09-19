@@ -197,6 +197,24 @@ class GetAttribute(object):
 
         return resp
 
+def wkbsToGlTF(geoms, transform, isTextured=False, texUri=None):
+    arrays = []
+    for geom in geoms:
+        dataArray = [geom['uv']] if isTextured else []
+        ts = TriangleSoup.from_wkb_multipolygon(geom['geom'], dataArray)
+        array = {
+            'position': ts.getPositionArray(),
+            'normal': ts.getNormalArray(),
+            'bbox': Box3D(geom['box']).asarray()
+        }
+        if isTextured:
+            array['uv'] = ts.getDataArray(0)
+        arrays.append(array)
+
+    gltf = GlTF.from_binary_arrays(arrays, transform, textureUri=texUri)
+
+    return gltf
+
 class GetFeature(object):
 
     def run(self, args):
@@ -207,24 +225,23 @@ class GetFeature(object):
 
 
         rep = utils.CitiesConfig.representation(city, layer, representation)
-        if rep['datatype'] == 'polyhedralsurface':
+        if (rep['datatype'] == 'polyhedralsurface'
+            or rep['datatype'] == 'textured_mesh'):
+            isTextured = rep['datatype'] == 'textured_mesh'
             offset = Session.feature_center(city, id, layer, representation)
-            geoms = Session.feature_polyhedral(city, offset, id, layer, representation)
-            arrays = []
+            if isTextured:
+                geoms = Session.feature_textured(city, offset, id, layer, representation)
+            else:
+                geoms = Session.feature_polyhedral(city, offset, id, layer, representation)
             transform = np.array([
                 [1,0,0,offset[0]],
                 [0,1,0,offset[1]],
                 [0,0,1,offset[2]],
                 [0,0,0,1]], dtype=float)
             transform = transform.flatten('F')
-            for geom in geoms:
-                ts = TriangleSoup.from_wkb_multipolygon(geom['geom'])
-                arrays.append({
-                    'position': ts.getPositionArray(),
-                    'normal': ts.getNormalArray(),
-                    'bbox': Box3D(geom['box']).asarray()
-                })
-            gltf = GlTF.from_binary_arrays(arrays, transform)
+
+            uri = rep['texturediruri'] + geoms[0]['texture_uri'] if isTextured else None
+            gltf = wkbsToGlTF(geoms, transform, isTextured, uri)
             b3dm = B3dm.from_glTF(gltf)
             resp = Response(b3dm.to_array().tostring())
             resp.headers['Content-Type'] = 'application/octet-stream'
@@ -278,21 +295,14 @@ class GetTile(object):
         if rep['datatype'] == 'polyhedralsurface':
             offset = Session.tile_center(city, tile, layer, representation)
             geoms = Session.tile_polyhedral(city, offset, tile, isFeature, layer, representation, withoutFeatures, onlyTiles)
-            arrays = []
             transform = np.array([
                 [1,0,0,offset[0]],
                 [0,1,0,offset[1]],
                 [0,0,1,offset[2]],
                 [0,0,0,1]], dtype=float)
             transform = transform.flatten('F')
-            for geom in geoms:
-                ts = TriangleSoup.from_wkb_multipolygon(geom['geom'])
-                arrays.append({
-                    'position': ts.getPositionArray(),
-                    'normal': ts.getNormalArray(),
-                    'bbox': Box3D(geom['box']).asarray()
-                })
-            gltf = GlTF.from_binary_arrays(arrays, transform)
+
+            gltf = wkbsToGlTF(geoms, transform)
             b3dm = B3dm.from_glTF(gltf)
             resp = Response(b3dm.to_array().tostring())
             resp.headers['Content-Type'] = 'application/octet-stream'

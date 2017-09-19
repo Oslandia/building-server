@@ -156,6 +156,41 @@ class Session():
         return res
 
     @classmethod
+    def feature_textured(cls, city, offset, feature, layer, representation):
+        """Returns a list of geometries in binary form.
+
+        Parameters
+        ----------
+        city : str
+        offset : list
+            [x, y, z] as float
+        feature : int
+        layer : str
+            'buildings'
+        representation : str
+            'lod1'
+
+        Returns
+        -------
+        res : list
+            List of OrderedDict with a 'gid' (or 'tile' if not feature) and a 'geom' key.
+
+            The 'geom' key is defined in binary wkb format.
+        """
+
+        rep = CitiesConfig.representation(city, layer, representation)
+        table = rep["featuretable"]
+        query = ("SELECT gid, ST_AsBinary(ST_Translate(geom,"
+        "{2},{3},{4})) AS geom, Box3D(ST_Translate(geom,"
+        "{2},{3},{4})) AS box, ST_AsBinary(uv) as UV, texture_uri FROM {0} "
+        "WHERE gid={1}".format(table, feature, -offset[0], -offset[1],
+                -offset[2]))
+
+        res = cls.query_asdict(query)
+
+        return res
+
+    @classmethod
     def tile_polyhedral(cls, city, offset, tile, isFeature, layer, representation, without, onlyTiles):
         """Returns a list of geometries in binary form.
 
