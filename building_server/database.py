@@ -190,6 +190,8 @@ class Session():
             "{3},{4},{5})) AS box from {0} JOIN t ON {0}.gid=t.gid"
             .format(table, featureTable, tile, -offset[0], -offset[1],
                     -offset[2]))
+            if without is not None:
+                query += " WHERE t.gid NOT IN ({0})".format(without)
         else:
             table = rep["tiletable"]
             query = ("SELECT tile, ST_AsBinary(ST_Translate(geom,"
@@ -198,6 +200,7 @@ class Session():
                    " WHERE tile={1}"
                    .format(table, tile, -offset[0], -offset[1],
                            -offset[2]))
+            # Without parameter not supported for this kind of data
 
         res = cls.query_asdict(query)
 
