@@ -386,8 +386,8 @@ class SceneBuilder():
     def to3dTiles(self, root):
         tiles = {
             "asset": {"version" : "1.0", "gltfUpAxis": "Z"},
-            "geometricError": 100,  # TODO: should reflect startingDepth
-            "root" : self.to3dTiles_r(root, 10)[0]
+            "geometricError": 1000,  # TODO: should reflect startingDepth
+            "root" : self.to3dTiles_r(root, 200)[0]
         }
         return json.dumps(tiles)
 
