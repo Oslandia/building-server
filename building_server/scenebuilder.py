@@ -53,10 +53,13 @@ class RuleEngine(object):
         for fc in self.featureConditions:
             condition = fc[0]
             action = fc[1]
-            if condition['type'] == "greater":
+            ctype = condition['type']
+            if ctype == "greater" or ctype == "smaller" or ctype == "equals":
+                operator = ">" if ctype == "greater" else (
+                    "<" if ctype == "smaller" else "=")
                 cursor.execute(
-                    sql.SQL("SELECT gid, tile FROM {} WHERE {}>=%s")
-                        .format(sql.SQL('.').join([sql.Identifier(a) for a in featureTable.split('.')]), sql.Identifier(condition['attribute'])),
+                    sql.SQL("SELECT gid, tile FROM {} WHERE {}{}%s")
+                        .format(sql.SQL('.').join([sql.Identifier(a) for a in featureTable.split('.')]), sql.Identifier(condition['attribute']), sql.SQL(operator)),
                     [float(condition['value'])]
                 )
             for t in cursor.fetchall():
