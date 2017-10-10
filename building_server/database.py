@@ -286,7 +286,7 @@ class Session():
         Nothing
         """
 
-        sql = ("CREATE TABLE {0}_bbox (quadtile varchar(10) PRIMARY KEY"
+        sql = ("CREATE TABLE {0}_bbox (quadtile varchar(100) PRIMARY KEY"
                ", bbox Box3D);".format(CitiesConfig.table(city)))
         cls.db.cursor().execute(sql)
 

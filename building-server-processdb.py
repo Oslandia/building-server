@@ -6,8 +6,9 @@ import time
 import sys
 import argparse
 import yaml
+from io import StringIO
 
-from building_server.database import Session
+from building_server.database import Session, CitiesConfig
 from building_server import utils
 
 
@@ -98,13 +99,44 @@ def initDB(city, conf, scoref):
     print("Quadtree creation total time : {0}".format(time.time() - t0))
 
     t1 = time.time()
-    # create index
-    Session.add_column(city, "quadtile", "varchar(10)")
-    Session.add_column(city, "weight", "real")
 
-    for i in index:
-        for j in index[i]:
-            Session.update_table(city, i, j[2], j[0])
+    quadtree_data = StringIO('\n'.join([
+        # row is (gid, quadtile, weight)
+        '\t'.join((str(j[0]), str(i), str(j[2])))
+        for i in index
+        for j in index[i]
+    ]))
+
+    quadtree_table = '{}_quadtree'.format(CitiesConfig.table(city))
+    print(quadtree_table)
+    Session.db.cursor().execute("""
+        drop table if exists {};
+        create unlogged table {} (
+            gid bigint primary key
+            , quadtile varchar
+            , weight real
+        )
+        """.format(quadtree_table, quadtree_table))
+
+    cur = Session.db.cursor()
+    cur.copy_from(quadtree_data, quadtree_table, columns=('gid', 'quadtile', 'weight'))
+
+    # fill a new table with city values joined with the quadtree table
+    # swap tables at the end
+    Session.db.cursor().execute("""
+        create table {city}_new as
+            select c.*, q.quadtile, q.weight
+            from {city} c
+            join {quadtable} q using (gid);
+
+        drop table {city};
+        drop table {quadtable};
+        alter table {city}_new rename to {city};
+    """.format(city=CitiesConfig.table(city), quadtable=quadtree_table))
+
+    # recreate spatial indexes and gid index
+    Session.db.cursor().execute("create index on {}(gid)".format(CitiesConfig.table(city)))
+    Session.db.cursor().execute("create index on {} using gist(geom)".format(CitiesConfig.table(city)))
 
     print("Table update time : {0}".format(time.time() - t1))
     t2 = time.time()
