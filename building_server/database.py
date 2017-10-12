@@ -216,6 +216,13 @@ class Session():
         return cls.query_asdict(sql)
 
     @classmethod
+    def tile_geom_score(cls, city, tile):
+        sql = ("SELECT sum(ST_Length(ST_BoundingDiagonal(Box3D(geom)))) FROM {0} WHERE quadtile = '{1}'"
+               .format(CitiesConfig.table(city), tile))
+
+        return cls.query_aslist(sql)[0]
+
+    @classmethod
     def add_column(cls, city, column, typecol):
         """Adds a column in table
 

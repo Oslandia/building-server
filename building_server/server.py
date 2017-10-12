@@ -182,10 +182,17 @@ class GetCity(object):
         resp.headers['Content-Type'] = 'text/plain'
         return resp
 
+
+    def _compute_tile_geometric_error(self, node, city):
+        error = 0
+        for n in node['children']:
+            error += Session.tile_geom_score(city, n['id'])
+        return error
+
     def _to_3dtiles(self, root, city, dataFormat):
         tiles = {
             "asset": {"version" : "1.0", "gltfUpAxis": "Z"},
-            "geometricError": 500, # TODO
+            "geometricError": self._compute_tile_geometric_error(root, city),
             "root" : self._to_3dtiles_r(root, city, dataFormat)
         }
         return json.dumps(tiles)
@@ -201,7 +208,7 @@ class GetCity(object):
             "boundingVolume": {
                 "box": box
             },
-            "geometricError": 500 / (node['depth'] + 1), # TODO
+            "geometricError": self._compute_tile_geometric_error(node, city),
             "children": [self._to_3dtiles_r(n, city, dataFormat) for n in node['children']],
             "refine": "add"
         }
