@@ -18,7 +18,7 @@ class CitiesConfig(object):
         if city in cls.cities:
             return cls.cities[city]['tablename']
         else:
-            return None
+            return city
 
 
 class Box3D(object):
