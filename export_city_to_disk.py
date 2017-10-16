@@ -14,6 +14,8 @@ parser.add_argument('city', help='city to download')
 parser.add_argument('out_folder', help='city to download')
 parser.add_argument('--jobs', type=int, help='parallel', default=1)
 parser.add_argument('--tileset', help='read tileset')
+parser.add_argument('--tri', type=int, help='read tileset', default=0)
+
 
 args = parser.parse_args()
 
@@ -38,7 +40,7 @@ def extract_urls(jsonFrag):
 def download_one(task):
     with open(task['file'], 'wb') as f:
         tile = task['url'][len('geometries/'):]
-        f.write(building_server.server.GetGeometry().run({'city': args.city, 'tile': tile, 'format': None}).data)
+        f.write(building_server.server.GetGeometry().run({'city': args.city, 'tile': tile, 'format': None, 'triangles': args.tri}).data)
 
     return 0
 

@@ -92,7 +92,10 @@ class GetGeometry(object):
                 wkbs.append(geom['geom'])
                 box = utils.Box3D(geom['box'])
                 boxes.append(box.asarray())
-            gltf = GlTF.from_wkb(wkbs, boxes, transform)
+            if args['triangles']:
+                gltf = GlTF.from_wkb_as_triangles(wkbs, boxes, transform)
+            else:
+                gltf = GlTF.from_wkb_as_lines(wkbs, boxes, transform)
 
         b3dm = B3dm.from_glTF(gltf).to_array().tostring()
 
