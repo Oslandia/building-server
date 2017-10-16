@@ -10,7 +10,6 @@ here = os.path.abspath(os.path.dirname(__file__))
 requirements = (
     'cython',
     'numpy',
-    'triangle',
     'psycopg2',
     'flask',
     'flask-restplus',
