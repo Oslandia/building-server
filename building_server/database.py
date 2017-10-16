@@ -392,3 +392,16 @@ class Session():
         )
         # autocommit mode for performance (we don't need transaction)
         cls.db.autocommit = True
+
+    @classmethod
+    def init(cls, dbhost, dbname, dbuser, dbport = 5432):
+        """
+        Initialize db session lazily
+        """
+        cls.db = connect(
+            "dbname={dbname} host={dbhost} user={dbuser} port={dbport}"
+            .format(**locals()),
+            cursor_factory=NamedTupleCursor,
+        )
+        # autocommit mode for performance (we don't need transaction)
+        cls.db.autocommit = True
