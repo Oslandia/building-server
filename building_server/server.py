@@ -40,7 +40,7 @@ class GetGeometry(object):
         city = args['city']
         tile = args['tile']
         attributes = []
-        if args['attributes']:
+        if args.get('attributes'):
             attributes = args['attributes'].split(',')
 
         # get geometries for a specific tile in database
@@ -48,7 +48,8 @@ class GetGeometry(object):
 
         # build a features collection with extra properties if necessary
         feature_collection = utils.FeatureCollection()
-        feature_collection.srs = utils.CitiesConfig.cities[city]['srs']
+        if utils.CitiesConfig.cities.get(city):
+            feature_collection.srs = utils.CitiesConfig.cities[city]['srs']
 
         for geom in geomsjson:
             properties = utils.PropertyCollection()
