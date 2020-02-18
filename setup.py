@@ -13,6 +13,7 @@ requirements = (
     'psycopg2',
     'flask',
     'flask-restplus',
+    'werkzeug==0.16.1', # last version compatible with flask-restplus
     'pyyaml',
     'py3dtiles'
 )
